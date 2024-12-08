@@ -1,0 +1,481 @@
+---
+title: "Introduction to SA24204142"
+author: "SA24204142"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to SA24204142}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r}
+library(SA24204142)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+
+## Overview
+
+__SA24204142__ is a simple R package developed to implement several algorithms which improve the efficiency of MCMC for the 'Statistical Computing' course. This package concludes four functions, namely, _MH_ (generate samples using Random-Walk Metropolis Algorithm), _MALA_ (generate samples using Metropolis Adjusted Langevin Algorithm), _HMC_ (generate samples using Hamiltonian Monte Carlo) and _NUTS_ (generate samples using No U-Turn Sampler). These functions can be used to sample only from continuous distributions for which the density function can be evaluated (perhaps up to an unknown normalizing constant) and the partial derivatives of the log of the density function can be computed. 
+
+
+
+## Introduction
+
+Random-Walk Metropolis Algorithm (RWM) is sometimes inefficient because it completely ignore the target distribution when it produces proposals. To improve the efficiency of MCMC, it is a good idea to use the information from the target distribution to guide the production of proposals.
+
+
+
+### Metropolis Adjusted Langevin Algorithm
+
+Compared with the proposal distribution of RWM, $Q(x'|x)=N(x,\sigma^2I)$, Metropolis Adjusted Langevin Algorithm (MALA) use 
+$$Q(x'|x)=N\left(x+\frac{\sigma^2}{2}\nabla\log p(x), \sigma^2I\right).$$
+
+
+
+### Hamiltonian Monte Carlo
+
+Hamiltonian Monte Carlo (HMC) is based on Hamiltonian systems. HMC can produce distant proposals by simulating the Hamiltonian systems avoiding the slow exploration of the state space that results from the diffusive behavior of simple random-walk proposals.
+
+Hamiltonian dynamics operates on a position vector $q$ and a momentum vector $p$. The system is described by a function of $q$ and $p$ known as the Hamiltonian, $H(q, p)$. For HMC, we usually use $H(q, p)$ that can be written as $H(q, p)=U(q)+K(p)$. The evolution of this system is determined by two equations called Hamilton's equations:
+$$\frac{\mathrm{d}q_i}{\mathrm{d}t}=\frac{\partial H}{\partial p_i}=\frac{\partial K}{\partial p_i},\quad \frac{\mathrm{d}p_i}{\mathrm{d}t}=-\frac{\partial H}{\partial q_i}=-\frac{\partial U}{\partial q_i}.$$
+
+It is hard to find the solution of Hamilton's equations. But Hamilton's equations can be approximated by discretizing time, using some small step size $\delta$. The LeapForg method is a method to discretizing time, which works as follows:
+
+* $p_i(t+\delta/2)=p_i(t)-(\delta/2)\frac{\partial U}{\partial q_i}(q(t))$
+
+* $q_i(t+\delta)=q_i(t)+\delta\frac{\partial K}{\partial q_i}(q(t+\delta/2))$
+
+* $p_i(t+\delta)=p_i(t+\delta/2)-(\delta/2)\frac{\partial U}{\partial q_i}(q(t+\delta))$
+
+The distribution we want to sample, $\pi(q)$, can be related to a potential energy function via the concept of a canonical distribution from statistical mechanics. We can define a joint distribution of $q$ and $p$ as follows:
+$$\pi(q,p)\propto \exp(-H(q,p))=\exp(-U(q))\exp(-K(p))\propto\pi(q)\pi(p).$$
+We can use Hamiltonian dynamics to sample from $\pi(q,p)$. We can define $U(q)=-\log \pi(q)$. Since $q$ and $p$ are independent, we can use any $\pi(p)$. In this package, I use standard normal distributions, which is equivalent to defining $K(p)=\|p\|^2/2$.
+
+In HMC, we use Hamiltonian dynamics to produce proposals. Given the initial values $q_0$ and $p_0$, we use LeapFrog method to simulate the evolution of the Hamiltonian system for a certain period of time. Use the simulated final position $q^*$ and momentum $p^*$ as the proposal. Then accept the proposal with probability 
+$$\alpha=\min\left\{1,\frac{\pi(q^*,p^*)}{\pi(q_0,p_0)}\right\}=\min\{1, \exp[U(q_0)+K(p_0)-U(q^*)-K(p^*)]\}.$$
+
+The HMC algorithm is as follows:
+
+* Specify the inital position $q^{(0)}$.
+
+* For $k=1,\dots,N$, 
+
+  * Sample a new momentum $p\sim\pi(p)$.
+
+  * $q=q^{(k-1)}$.
+
+  * $(q^*,p^*)=\mathrm{LeapFrog}(q, p, \delta, L)$.
+
+  * $\alpha=\min\{1, \exp[U(q_0)+K(p_0)-U(q^*)-K(p^*)]\}$.
+
+  * Accept $q^{(k)}=q^*$ with probability $\alpha$.
+
+
+
+
+### No U-Turn Sampler
+
+HMC is very sensitive to parameters such as the step size, $\delta$, and the number of steps in each iteration, $L$. To improve the efficiency of HMC, we should adjust the parameters. But it is sometimes impossible to adjust parameters by hands. No U-Turn Sampler (NUTS) is an adaptive HMC algorithm which can adjust parameters automatically.
+
+For the detailed algorithm of NUTS, please refer to Hoffman M D, Gelman A. The No-U-Turn sampler: adaptively setting path lengths in Hamiltonian Monte Carlo[J]. J. Mach. Learn. Res., 2014, 15(1): 1593-1623.
+
+The _NUTS_ in this package can only adjust `L`, the number of LeapFrog steps, automatically.
+
+
+
+##   Sampling from a 100-dimensional distribution by _MH_ and _HMC_
+
+This section refers to Neal (2011) Handbook of Markov Chain Monte Carlo ISBN: 978-1420079418.
+
+Our target is a 100-dimensional multivariate Gaussian distribution in which the variables are independent, with means of zero, and standard deviations of 0.01, 0.02, ..., 0.99, 1.00. 
+
+To apply _MH_ and _HMC_, we should derive log target density and gradient.
+
+The target density is 
+$$f(x)\propto\exp\left\{-\frac{1}{2}\sum_{i=1}^{100}\frac{x_i^2}{(0.01i)^2}\right\}.$$
+
+Hence we have that
+
+$$
+\begin{aligned}
+  \log f(x) & \simeq -\frac{1}{2}\sum_{i=1}^{100}\frac{x_i^2}{(0.01i)^2}, \\
+  \frac{\partial}{\partial x_i}\log f(x) & = -\frac{x_i}{(0.01i)^2}.
+\end{aligned}
+$$
+
+```{R}
+Sigma <- seq(0.01, 1, 0.01) 
+InvSigma <- 1/Sigma 
+InvSigma2 <- InvSigma^2 
+
+logTarget <- function(x) {
+  -sum(x^2*InvSigma2)/2
+}
+
+glogTarget <- function(x){
+  return(-InvSigma2*x)
+}
+```
+
+I applied HMC to sample `N=1000` random numbers from this distribution using trajectories with `L = 150` and with `delta` randomly selected for each iteration, uniformly from (0.0104, 0.0156), which is $0.013 \pm20\%$. I used random-walk Metropolis with proposal standard deviation, `sigma`, drawn uniformly from (0.0176, 0.0264), which is $0.022 \pm 20\%$. These are close to optimal settings for both methods. 
+
+```{r}
+N <- 1000
+L <- 150
+interval_HMC <- c(0.8*0.013, 1.2*0.013)
+interval_HM <- c(0.8*0.022, 1.2*0.022)
+```
+
+
+
+### Rejection rate
+
+```{R}
+set.seed(20241205)
+RejectionRate <- matrix(nrow=10, ncol=2)
+for (i in 1:10) {
+  q_init <- rnorm(100)
+  RejectionRate[i, 1] <- MH(N=N,
+                            q_init=q_init,
+                            L=L,
+                            logTarget=logTarget,
+                            isRandom=TRUE,
+                            interval=interval_HM)$k/N/L
+  RejectionRate[i, 2] <- HMC(N=N,
+                             q_init=q_init,
+                             L=L,
+                             logTarget=logTarget,
+                             glogTarget=glogTarget,
+                             isRandom=TRUE,
+                             interval=interval_HMC)$k/N
+}
+colMeans(RejectionRate) # 0.748, 0.128
+```
+
+The rejection rate was 0.128 for HMC and 0.748 for random-walk Metropolis.
+
+
+
+### Values for the variate with largest standard deviation
+
+```{R}
+set.seed(20241205)
+q_init <- rep(0.5, 100)
+
+result1 <- MH(N=N, 
+              q_init=q_init, 
+              L=L, 
+              logTarget=logTarget, 
+              isRandom=TRUE, 
+              interval=interval_HM)
+
+result2 <- HMC(N=N, 
+               q_init=q_init, 
+               L=L, 
+               logTarget=logTarget, 
+               glogTarget=glogTarget, 
+               isRandom=TRUE, 
+               interval=interval_HMC)
+```
+
+```{r, fig.align="center", fig.width = 7, fig.height=3.5}
+data1 <- data.frame(iteration=1:N, x=result1$q[, 100])
+data2 <- data.frame(iteration=1:N, x=result2$q[, 100])
+
+p1 <- ggplot() + 
+  theme_bw() +
+  theme(panel.grid = element_blank()) + 
+  geom_point(data=data1,
+             aes(x=iteration, y=x),
+             size=1) +
+  ylim(-3, 3) +
+  labs(title = 'Random-walk Metropolis', 
+       x='iteration',
+       y='last position coordinate')+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+
+p2 <- ggplot() + 
+  theme_bw() +
+  theme(panel.grid = element_blank()) + 
+  geom_point(data=data2,
+             aes(x=iteration, y=x),
+             size=1) +
+  ylim(-3, 3) +
+  labs(title = 'Hamiltonian Monte Carlo', 
+       x='iteration',
+       y='last position coordinate')+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+
+p1+p2
+```
+
+This plot shows that the autocorrelation of these values is much higher for random-walk Metropolis than for HMC.
+
+
+
+### Estimates of means and standard deviations
+
+```{r}
+CompareMean <- data.frame(Sigma=Sigma,
+                          MH=colMeans(result1$q),
+                          HMC=colMeans(result2$q))  
+CompareSd <- data.frame(Sigma=Sigma,
+                        MH=apply(result1$q, 2, sd),
+                        HMC=apply(result2$q, 2, sd))
+```
+
+```{R}
+p1 <- ggplot(CompareMean, aes(x=Sigma, y=MH)) + 
+  theme_bw() +
+  theme(panel.grid = element_blank()) + 
+  geom_point(size=1) +
+  geom_hline(yintercept=0) +
+  ylim(-1, 1) +
+  labs(title = 'Random-walk Metropolis', 
+       x='standard deviation of coordinate',
+       y='sample mean of coordinate')+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+
+p2 <- ggplot(CompareMean, aes(x=Sigma, y=HMC)) + 
+  theme_bw() +
+  theme(panel.grid = element_blank()) + 
+  geom_point(size=1) +
+  geom_hline(yintercept=0) +
+  ylim(-1, 1) +
+  labs(title = 'Hamiltonian Monte Carlo', 
+       x='standard deviation of coordinate',
+       y='sample mean of coordinate')+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+
+p3 <- ggplot(CompareSd, aes(x=Sigma, y=MH)) + 
+  theme_bw() +
+  theme(panel.grid = element_blank()) + 
+  geom_point(size=1) +
+  geom_abline(slope=1, intercept=0) +
+  ylim(0, 1.2) +
+  labs(title = 'Random-walk Metropolis', 
+       x='standard deviation of coordinate',
+       y='sample standard deviation of coordinate')+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+
+p4 <- ggplot(CompareSd, aes(x=Sigma, y=HMC)) + 
+  theme_bw() +
+  theme(panel.grid = element_blank()) + 
+  geom_point(size=1) +
+  geom_abline(slope=1, intercept=0) +
+  ylim(0, 1.2) +
+  labs(title = 'Hamiltonian Monte Carlo', 
+       x='standard deviation of coordinate',
+       y='sample standard deviation of coordinate')+
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+```
+
+```{R, fig.align="center", fig.width = 7, fig.height=7}
+(p1+p2)/(p3+p4)
+```
+
+We can see that except for the first few variables, the error in the mean estimates and the standard deviation estimates from HMC is much less than the error in the mean estimates and the standard deviation estimates from random-walk Metropolis.
+
+
+
+##   Sampling from a banana shape distribution by _MH_, _MALA_, _HMC_ and _NUTS_
+
+In this section, I will show how to sample from a banana shape distribution using functions in this package. 
+
+### A banana shape distribution
+
+Let us consider a 2-dimensional banana shape posterior in such a model.
+
+$$y_i\sim N(\theta_1+\theta_2^2, 25),\quad \theta=(\theta_1, \theta_2)\sim N(0,I).$$
+
+The log posterior is 
+
+$$
+\begin{aligned}
+  \log p(\theta|Y) & \simeq -\frac{1}{50}\sum_{i=1}^n(y_i-\theta_1-\theta_2^2)^2-\frac{1}{2}(\theta_1^2+\theta_2^2) \\
+  & \simeq \frac{1}{25}(\theta_1+\theta_2^2)\sum_{i=1}^n y_i-\frac{n}{50}(\theta_1+\theta_2^2)^2-\frac{1}{2}(\theta_1^2+\theta_2^2).
+\end{aligned}
+$$
+
+The gradient is 
+
+$$
+\begin{aligned}
+  \frac{\partial}{\partial\theta_1}\log p(\theta|Y) & = \frac{1}{25}\sum_{i=1}^n y_i-\frac{n}{25}(\theta_1+\theta_2^2)-\theta_1, \\
+  \frac{\partial}{\partial\theta_2}\log p(\theta|Y) & = \frac{2\theta_2}{25}\sum_{i=1}^n y_i -\frac{2n\theta_2}{25}(\theta_1+\theta_2^2)-\theta_2.
+\end{aligned}
+$$
+
+### Sampling using _MH_, _MALA_, _HMC_ and _NUTS_
+
+First, generate `n=1000` random numbers from $N(1, 25)$ as samples. 
+
+```{r}
+set.seed(20241206)
+n <- 1000
+y <- rnorm(n, 1, 5)
+```
+
+Then we define the `logTarget` and `glogTarget`.
+
+```{r}
+y_sum <- sum(y)
+
+logTarget <- function(theta) {
+  return((theta[1]+theta[2]^2) * y_sum / 25 - n*(theta[1]+theta[2]^2)^2/50 - sum(theta^2) / 2)
+}
+
+glogTarget <- function(theta) {
+  g1 <- y_sum/25 - n*(theta[1]+theta[2]^2)/25-theta[1]
+  g2 <- 2*theta[2]*y_sum/25-2*n*theta[2]*(theta[1]+theta[2]^2)/25-theta[2]
+  return(c(g1, g2))
+}
+```
+
+Then sample random numbers using _MH_, _MALA_, _HMC_ and _NUTS_. 
+
+For these functions, `N`, the number of samples we want to generate, and `q_init`, the initial position, should be specified. In this case, `N=200` and `q_init=c(0,0)`.
+
+For _MH_ and _MALA_, `sigma`, the standard deviation of proposal distribution, and `L`, the number of between-sample random numbers, should be specified. In this case, `sigma=0.05` and `L=20`.
+
+For _HMC_ and _NUTS_, `delta`, the step size for LeapFrog, should be specified. In this case, `delta=0.05`. Moreover, for _HMC_, `L`, the number of leapfrog steps, should be specified. In this case, `L=20`.
+
+```{r}
+set.seed(20241208)
+theta_init <- c(0, 0)
+
+result_MH <- MH(N=200,
+                q_init=theta_init,
+                sigma=0.05,
+                L=20,
+                logTarget=logTarget)
+
+result_MALA <- MALA(N=200,
+                    q_init=theta_init,
+                    sigma=0.05,
+                    L=20,
+                    logTarget=logTarget,
+                    glogTarget=glogTarget)
+
+result_HMC <- HMC(N=200,
+                  q_init=theta_init,
+                  delta=0.05,
+                  L=20,
+                  logTarget=logTarget,
+                  glogTarget=glogTarget)
+
+result_NUTS <- NUTS(N=200,
+                    q_init=theta_init,
+                    delta=0.05,
+                    logTarget=logTarget,
+                    glogTarget=glogTarget)
+
+data_MH <- data.frame(result_MH$q)
+colnames(data_MH) <- c("theta1", "theta2")
+data_MALA <- data.frame(result_MALA$q)
+colnames(data_MALA) <- c("theta1", "theta2")
+data_HMC <- data.frame(result_HMC$q)
+colnames(data_HMC) <- c("theta1", "theta2")
+data_NUTS <- data.frame(result_NUTS)
+colnames(data_NUTS) <- c("theta1", "theta2")
+```
+
+### Result
+
+Let us plot the distribution of the samples.
+
+```{R}
+Target <- function(theta1, theta2) {
+  return(exp((theta1+theta2^2) * y_sum / 25 - n*(theta1+theta2^2)^2/50 - (theta1^2+theta2^2) / 2))
+}
+
+theta1 <- seq(-2, 2, length.out=200)
+theta2 <- seq(-2, 2, length.out=200)
+z <- outer(theta1, theta2, Target)
+
+df <- data.frame(theta1=rep(theta1, times=200), 
+                 theta2=rep(theta2, each=200),
+                 z=as.vector(z))
+
+figure_target <- ggplot() +
+  theme_bw() +
+  geom_raster(data=df, aes(x=theta1,y=theta2,fill=z),interpolate=TRUE) +
+  scale_fill_gradientn(colors=brewer.pal(8, 'Blues')) +
+  labs(title='density', x='theta1', y='theta2', fill='density') +
+  xlim(-2, 2) +
+  ylim(-2, 2) +
+  theme(plot.background = element_rect(fill = "white"),
+        panel.background = element_rect(fill = "#F7FBFF")) +
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 12),
+        panel.grid = element_blank(),
+        legend.position="none")
+```
+
+```{r fig.align="center",,fig.width = 7, fig.height=7}
+figure_MH <- figure_target +
+  geom_point(data=data_MH,
+               aes(x=theta1, y=theta2),
+               size=0.5,
+               color="#FF7F00") +
+  labs(title = "MH")
+
+figure_MALA <- figure_target +
+  geom_point(data=data_MALA,
+               aes(x=theta1, y=theta2),
+               size=0.5,
+               color="#FF7F00") +
+  labs(title = "MALA")
+
+figure_HMC <- figure_target +
+  geom_point(data=data_HMC,
+               aes(x=theta1, y=theta2),
+               size=0.5,
+               color="#FF7F00") +
+  labs(title = "HMC")
+
+figure_NUTS <- figure_target +
+  geom_point(data=data_NUTS,
+               aes(x=theta1, y=theta2),
+               size=0.5,
+               color="#FF7F00") +
+  labs(title = "NUTS")
+
+(figure_MH + figure_MALA) / (figure_HMC + figure_NUTS)
+```
+
+
+
+

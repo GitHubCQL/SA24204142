@@ -1,0 +1,2603 @@
+---
+title: "All homework answers of SA24204142"
+author: "SA24204142"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{All homework answers of SA24204142}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+```
+
+```{r}
+library(microbenchmark)
+library(ggplot2)
+library(patchwork)
+library(MASS)
+library(boot)
+library(bootstrap)
+library(DAAG)
+library(lpSolve)
+library(Rcpp)
+library(SA24204142)
+```
+
+# HW0
+
+## Example 1
+复现讲义中的Example 3.
+
+## Answer 1
+
+```{r fig.align="center", fig.width = 6, fig.height=6}
+ctl <- c(4.17, 5.58, 5.18, 6.11, 4.50, 4.61, 5.17, 4.53, 5.33, 5.14)
+trt <- c(4.81, 4.17, 4.41, 3.59, 5.87, 3.83, 6.03, 4.89, 4.32, 4.69)
+weight <- c(ctl, trt)
+group <- gl(2, 10, 20, labels = c("Ctl", "Trt"))
+lm.D9 <- lm(weight ~ group)
+par(mfrow=c(2, 2))
+par(mar=c(4, 4, 2.5, 2))
+plot(lm.D9)
+```
+
+
+
+## Example 2
+对R自带数据集iris进行kmeans聚类.
+
+## Answer 2
+
+下面是代码实现：
+```{r}
+set.seed(20240910)
+ir = iris[,1:4]
+myclust = kmeans(x=ir, centers=3, nstart=100) # 分为3类，迭代100次
+labels = myclust$cluster
+```
+
+聚类效果如下表：
+```{r}
+targets = t(iris[5])
+table(targets, labels)
+```
+
+可见错分率约为10.7%.
+
+
+
+## Example 3
+生成概率密度为$$p(x)=\frac{1}{2}e^{-|x|}$$的随机数.
+
+## Answer 3
+可以使用逆变换法. 通过简单计算可知上述密度函数对应的分布函数为
+$$F(x)=\int_{-\infty}^x\frac{1}{2}e^{-|t|}\mathrm{d}t=\begin{cases}
+  \frac{1}{2}e^x & x\le 0\\
+  1-\frac{1}{2}e^{-x} & x > 0
+\end{cases}.$$
+其逆映射为
+$$F^{-1}(x)=
+\begin{cases}
+  \log(2x) & 0<x\le \frac{1}{2}\\
+  -\log(2-2x) & \frac{1}{2}<x<1
+\end{cases}.$$
+取$U\sim U(0,1)$，那么$F^{-1}(U)$服从目标分布.
+
+下面是对应的代码实现：
+```{r}
+set.seed(20240910, kind=NULL)
+u <- runif(10000)
+x <- log(2*u)*(u<=0.5) - log(2-2*u)*(u>0.5)
+```
+
+下图是实验结果，柱状图为生成的随机数的频率图，红线为目标分布的密度函数.
+```{r fig.align="center", fig.width = 6, fig.height=6}
+hist(x, prob=TRUE, breaks=100)
+DensityFunction <- function(x)
+  return(0.5*exp(-abs(x)))
+curve(DensityFunction, col='red', add=TRUE)
+```
+
+可见生成的效果很好.
+
+
+
+
+
+# HW1
+
+## Question 1: Exercise 3.4
+The Rayleigh density is 
+$$f(x)=\frac{x}{\sigma^2}e^{-x^2/(2\sigma^2)},\quad x\ge 0,\sigma>0.$$
+Develop an algorithm to generate random samples from a Rayleigh(σ) distribution. 
+
+Generate Rayleigh(σ) samples for several choices of σ > 0 and check that the mode of the generated samples is close to the theoretical mode σ (check the histogram).
+
+## Answer 1
+
+### 1.算法
+下面使用逆变换法来生成样本. 目标分布为
+$$F(x)=\int_{0}^x\frac{t}{\sigma^2}e^{-t^2/(2\sigma^2)}\mathrm{d}t=1-e^{-x^2/(2\sigma^2)},\quad x\ge0.$$
+其逆为
+$$F^{-1}(x)=\sqrt{-2\sigma^2\ln(1-x)}.$$
+因此算法如下：
+
+1. 生成$U\sim U(0,1)$.
+
+2. 输出$X=F^{-1}(U)$.
+
+
+### 2.验证
+接下来我分别考察$\sigma = 0.1, 1, 10$的情况，每种情况生成10000个随机数. 
+
+上述算法的代码实现如下：
+```{r}
+RayleighGenerator <- function(n, sigma) {
+  # n: 生成的随机数数目
+  # sigma: 目标分布中的参数sigma
+  # return: 一个长度为n的向量
+  
+  # 1. 生成均匀分布随机数U
+  U <- runif(n)
+  
+  # 2. 输出X=F^{-1}(U)
+  X <- sqrt(-2 * sigma^2 * log(1-U))
+  
+  return(X)
+}
+```
+
+
+下面是不同$\sigma$取值下的实验结果：
+```{r}
+n <- 10000   # 生成随机数数目
+sigmas <- c(0.1, 1, 10)
+```
+
+```{r}
+set.seed(20240920)
+X1 <- RayleighGenerator(n, sigmas[1])
+X2 <- RayleighGenerator(n, sigmas[2])
+X3 <- RayleighGenerator(n, sigmas[3])
+
+# 整成dataframe用于画图
+data1 <- data.frame(X = X1)
+data2 <- data.frame(X = X2)
+data3 <- data.frame(X = X3)
+```
+
+```{r}
+# 目标分布的密度
+TargetDensityGenerator <- function(sigma) {
+  target <- function(x) {
+    return(
+      ( x / (sigma^2) * exp(-x^2/(2*sigma^2)) ) * ( x > 0 )
+    )
+  }
+  return(target)
+}
+```
+
+```{r}
+# 画图函数
+myplot <- function(data, sigma) {
+  # data: 生成的随机数，必须是dataframe，只有一列，名为"X"
+  # sigma: 目标分布的参数
+  # return: 一个ggplot图，带有data决定的直方图和sigma决定的目标密度曲线
+  
+  n <- dim(data)[1]
+  Figure <- ggplot(data, aes(x=X)) +
+    geom_histogram(aes(y = after_stat(density)),
+                   binwidth=3.5*sigma/(n^(1/3)),
+                   fill='#74c0fc', 
+                   color="white") +   
+    # 使用Scott法选取binwidth，经我计算Rayleigh分布的方差就是sigma^2
+    stat_function(fun = TargetDensityGenerator(sigma), color = '#fd7e14', linewidth = 1) +
+    geom_vline(xintercept=sigma, linetype=2, linewidth=0.5) +
+    # Rayleigh分布的众数就是sigma
+    labs(x="X", 
+         y="Density",
+         title=bquote(sigma ==. (sigma))) +   # 动态生成标题
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          plot.title = element_text(hjust=0.5),
+          legend.position = "none")
+  
+  return(Figure)
+}
+```
+
+```{r, fig.align="center", fig.width = 6, fig.height=2}
+Figure1 <- myplot(data1, sigmas[1])
+Figure2 <- myplot(data2, sigmas[2])
+Figure3 <- myplot(data3, sigmas[3])
+Figure1 + Figure2 + Figure3
+```
+
+其中橙色曲线为目标密度函数，虚线表示的是理论众数，可见样本众数和理论众数是十分相近的，样本分布和目标分布也是极为相近. 
+
+
+## Question 2: Exercise 3.11
+
+Generate a random sample of size 1000 from a normal location mixture. The components of the mixture have $N(0, 1)$ and $N(3, 1)$ distributions with mixing probabilities $p_1$ and $p_2 = 1 − p_1$.
+
+Graph the histogram of the sample with density superimposed, for $p_1 = 0.75$. 
+
+Repeat with different values for p1 and observe whether the empirical distribution of the mixture appears to be
+bimodal. Make a conjecture about the values of p1 that produce bimodal mixtures.
+
+
+
+## Answer 2
+
+
+### 1.算法
+这是个混合模型，生成随机数的算法如下：
+
+1. 生成一个独立的潜变量$I$其满足$P(I=0)=p_1,\ P(I=1)=p_2$. 
+
+2. 若$I=0$，则从$N(0, 1)$中生成$X$. 若$I=1$，则从$N(3, 1)$中生成$X$.
+
+3. 输出$X$.
+
+上述算法的代码实现如下：
+```{r}
+MixNormGenerator <- function(n, p) {
+  # n: 生成的随机数数目
+  # p: p1的取值
+  # return: 一个长度为n的向量
+  
+  # 1.生成潜变量I
+  I <- sample(0:1, size=n, replace=TRUE, prob=c(p, 1-p))
+  
+  # 2.从两个分量中采样
+  X1 <- rnorm(n, 0, 1)
+  X2 <- rnorm(n, 3, 1)
+  
+  # 3.输出X
+  X <- X1 * (1-I) + X2 * I
+  return(X)
+}
+```
+
+
+### 2.画直方图和目标密度
+
+```{r}
+# 这里写一个函数根据p1输出目标密度函数，方便后面画图的时候调用
+TargetDensityGenerator <- function(p1) {
+  target <- function(x) {
+    return(p1*dnorm(x, 0, 1)+(1-p1)*dnorm(x, 3, 1))
+  }
+}
+```
+
+
+$p_1=0.75$时的实验结果如下，橙色曲线为目标密度，可见生成的效果不错.
+
+```{r}
+set.seed(20240921)
+n <- 1000
+p1 <- 0.75
+X <- MixNormGenerator(n, p1)
+data <- data.frame(X=X)
+```
+
+```{r}
+Figure <- ggplot(data, aes(x=X)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 binwidth=3.5*sd(data$X)/(n^(1/3)),
+                 fill='#74c0fc', 
+                 color="white") + 
+  stat_function(fun = TargetDensityGenerator(p1), color = '#fd7e14', linewidth = 1) +
+  labs(x="X", 
+       y="Density",
+       title=bquote(p[1] ==. (p1))) +  
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(hjust=0.5),
+        legend.position = "none")
+
+Figure
+```
+
+
+### 3.观察双峰性并推测导致双峰的参数范围
+
+考虑$p_1$分别取$0.1, 0.2, 0.3,\cdots,0.9$时的情况，实验结果如下图所示：
+
+```{r}
+n <- 1000
+ps <- seq(0.1, 0.9, 0.1)
+```
+
+```{r}
+set.seed(20240921)
+
+X1 <- MixNormGenerator(n, ps[1])
+X2 <- MixNormGenerator(n, ps[2])
+X3 <- MixNormGenerator(n, ps[3])
+X4 <- MixNormGenerator(n, ps[4])
+X5 <- MixNormGenerator(n, ps[5])
+X6 <- MixNormGenerator(n, ps[6])
+X7 <- MixNormGenerator(n, ps[7])
+X8 <- MixNormGenerator(n, ps[8])
+X9 <- MixNormGenerator(n, ps[9])
+
+data1 <- data.frame(X=X1)
+data2 <- data.frame(X=X2)
+data3 <- data.frame(X=X3)
+data4 <- data.frame(X=X4)
+data5 <- data.frame(X=X5)
+data6 <- data.frame(X=X6)
+data7 <- data.frame(X=X7)
+data8 <- data.frame(X=X8)
+data9 <- data.frame(X=X9)
+```
+
+```{r}
+myplot <- function(data, p) {
+  n <- nrow(data)
+  Figure <- ggplot(data, aes(x=X)) +
+    geom_histogram(aes(y = after_stat(density)),
+                   binwidth=3.5*sd(data$X)/(n^(1/3)),
+                   fill='#74c0fc',
+                   color="white") + 
+    labs(x="X", 
+         y="Density",
+         title=bquote(p[1] ==. (p))) +   # 动态生成标题
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          plot.title = element_text(hjust=0.5),
+          legend.position = "none")
+  return(Figure)
+}
+```
+
+```{r,fig.align="center", fig.width = 6, fig.height=6}
+Figure1 <- myplot(data1, ps[1])
+Figure2 <- myplot(data2, ps[2])
+Figure3 <- myplot(data3, ps[3])
+Figure4 <- myplot(data4, ps[4])
+Figure5 <- myplot(data5, ps[5])
+Figure6 <- myplot(data6, ps[6])
+Figure7 <- myplot(data7, ps[7])
+Figure8 <- myplot(data8, ps[8])
+Figure9 <- myplot(data9, ps[9])
+
+(Figure1+Figure2+Figure3)/(Figure4+Figure5+Figure6)/(Figure7+Figure8+Figure9)
+```
+
+可见当$p_1=0.3,0.4,0.5,0.6,0.7$时双峰非常明显，而$p_1=0.2, 0.8$时双峰不明显，当$p_1=0.1,0.9$时基本没有双峰现象. 
+
+因此我推断当$p_1\in [0.3. 0.7]$时有双峰现象.
+
+
+
+
+
+## Question 3: Exercise 3.20
+
+A compound Poisson process is a stochastic process $\{X(t), t \ge 0\}$ that can be represented as the random sum $X(t) = \sum_{i=1}^{N(t)}Y_i,\ t ≥ 0$, where $\{N(t), t ≥ 0\}$ is a Poisson process and $Y_1, Y_2,\dots$ are iid and independent of $\{N(t), t ≥ 0\}$.
+
+Write a program to simulate a compound Poisson(λ)–Gamma process (Y has a Gamma distribution). 
+
+Estimate the mean and the variance of X(10) for several choices of the parameters and compare with the theoretical values.
+
+Hint: Show that $E[X(t)] = λtE[Y_1]$ and $Var(X(t)) = λtE[Y_1^2]$.
+
+
+## Answer 3
+
+
+### 1.算法
+任意给定$t\ge0$，由于$X(t)|N(t)=k\sim Gamma(k*shape,rate)$，我给出如下算法生成$X(t)$： 
+
+1. 生成$N\sim Poisson(\lambda t)$.
+
+2. 输出$X\sim Gamma(N*shape, rate)$.
+
+代码实现如下：
+```{r}
+CPGPLocalGenerator <- function(n, lambda, shape, rate, t){
+  # n: 生成的随机数数目
+  # lambda: Poisson过程参数
+  # shape, rate: Gamma分布参数
+  # t: 时间参数
+  # return: 一个长度为n的向量
+  
+  # remark: 这个函数只能生成X(t)的样本，不能生成一条轨道
+  
+  # 1.生成N
+  N <- rpois(n, lambda*t)
+  
+  # 2.输出X
+  X <- rgamma(n, shape=N*shape, rate=rate)
+  return(X)
+}
+```
+
+
+如果要生成一条轨道，由于此随机过程具有独立增量性，可以使用如下算法：
+
+1. 输入参数$n$和$step$，$n$为样本点数目，$step$为步长.
+
+2. 对于任意小于等于$n$的非负整数$i$，令$t_i=i*setp$.
+
+3. 生成$X$:
+  
+   (1). $X_0=0$.
+  
+   (2). for i in 1:n :
+       
+   * 生成$\Delta N\sim Poisson(\lambda*step)$.
+     
+   * 生成$\Delta X\sim Gamma(shape*\Delta N, rate)$.
+       
+   * $X_i=X_{i-1}+\Delta X$.
+       
+4. 输出$\{(t_i,X_i)\}_{i=0}^n$.
+
+其代码实现如下：
+```{r}
+CPGPTraceGenerator <- function(n, step, lambda, shape, rate) {
+  # n: 生成的样本点数，算上t=0的点，实际上输出的是n+1个点
+  # step: 步长
+  # lambda: Poisson过程参数
+  # shape, rate: Gamma分布参数
+  # return: 一个(n+1)*2的dataframe，列名为"t"和"X"
+  
+  # 生成t
+  t <- seq(from=0, by=step, length.out=n+1)
+  
+  # 生成X
+  DeltaN <- rpois(n, lambda*step)
+  DeltaX <- rgamma(n, shape=shape*DeltaN, rate=rate)
+  X <- c(0, cumsum(DeltaX))
+
+  # 生成dataframe
+  data <- data.frame(t=t, X=X)
+  
+  return(data)
+}
+```
+
+
+### 2.实验
+
+首先看看$X(t)$的生成情况. 易见$X(t)$非负，$X(t)$的理论分布为
+$$F(x)=\sum_{k=0}^\infty P(X(t)\le x|N(t)=k)=P(N(t)=0)+\sum_{k=1}^\infty P(X(t)\le x|N(t)=k)P(N(t)=k), \quad x\ge 0.$$
+
+可以看到$F(x)$在$x>0$时是光滑的，此时的导数为
+$$f(x)=\sum_{k=1}^{\infty}\frac{rate^{k*shape}}{\Gamma(k*shape)}x^{k*shape-1}e^{-rate*x}\frac{(\lambda t)^k}{k!}e^{-\lambda t},\quad x>0.$$
+
+接下来看看$\lambda=1$，$shape=1$，$rate=1$时生成的随机数的情况，此时$P(X(t)=0)=e^{-t}$，并且
+$$f(x)=\sum_{k=1}^\infty\frac{(tx)^k}{k!(k-1)!}x^{-1}e^{-x-t}.$$
+
+可用$$g(x)=\sum_{k=1}^{20}\frac{(tx)^k}{k!(k-1)!}x^{-1}e^{-x-t}$$来估计$f(x)$.
+
+下面是$t=1,3,10$的情况，每种情况生成10000个随机数，实验结果如下图：
+
+```{r}
+set.seed(20240921)
+
+lambda <- 1
+shape <- 1
+rate <- 1
+n <- 10000
+ts <- c(1, 3, 10)
+
+X1 <- CPGPLocalGenerator(n, lambda, shape, rate, ts[1])
+X2 <- CPGPLocalGenerator(n, lambda, shape, rate, ts[2])
+X3 <- CPGPLocalGenerator(n, lambda, shape, rate, ts[3])
+
+data1 <- data.frame(X=X1)
+data2 <- data.frame(X=X2)
+data3 <- data.frame(X=X3)
+```
+
+```{r}
+TargetDensityGenerator <- function(t) {
+  TargetDensity <- function(x) {
+    result <- 0
+    for (i in 1:20) {
+      result <- result + t^i * x^{i-1} * exp(-x-t) / (factorial(i) * factorial(i-1))
+    }
+    return(result)
+  }
+  return(TargetDensity)
+}
+
+myplot <- function(data, t) {
+  n <- nrow(data)
+  Figure <- ggplot(data, aes(x=X)) +
+    geom_histogram(aes(y = after_stat(density)), bins=50, fill='#74c0fc', color="white") + 
+    stat_function(fun = TargetDensityGenerator(t), color = '#fd7e14', linewidth = 0.7) +
+    labs(x="X(t)", 
+         y="Density",
+         title=bquote(t ==. (t))) +  
+    theme_bw() +
+    theme(panel.grid = element_blank(),
+          plot.title = element_text(hjust=0.5),
+          legend.position = "none")
+  return(Figure)
+}
+```
+
+```{r, fig.align="center", fig.width = 6, fig.height=2}
+Figure1 <- myplot(data1, ts[1])
+Figure2 <- myplot(data2, ts[2])
+Figure3 <- myplot(data3, ts[3])
+
+Figure1+Figure2+Figure3
+```
+
+橙色曲线即为$g(x)$，可见生成的随机数在$X(t)>0$的时候效果很好. 而生成的随机数中$0$的频率和$P(X(t)=0)$的对比如下表：
+
+```{r}
+freq <- c(sum(X1==0)/n, sum(X2==0)/n, sum(X3==0)/n)
+prob <- exp(-ts)
+data.frame(t=ts, freq=freq, prob=prob)
+```
+
+可见二者的差异很小. 因此我所生成的随机数效果不错.
+
+
+
+再看看$\lambda=1$，$shape=1$，$rate=1$时生成的五条轨道：
+```{r}
+set.seed(20240921)
+
+lambda <- 1
+shape <- 1
+rate <- 1
+n <- 1000
+step <- 0.1
+
+data1 <- CPGPTraceGenerator(n, step, lambda, shape, rate)
+data2 <- CPGPTraceGenerator(n, step, lambda, shape, rate)
+data3 <- CPGPTraceGenerator(n, step, lambda, shape, rate)
+data4 <- CPGPTraceGenerator(n, step, lambda, shape, rate)
+data5 <- CPGPTraceGenerator(n, step, lambda, shape, rate)
+
+data <- data.frame(t=data1$t, X1=data1$X, X2=data2$X, X3=data3$X, X4=data4$X, X5=data5$X)
+```
+
+```{r}
+Figure <- ggplot(data=data, aes(x=t)) +
+  geom_line(aes(y=X1), color='#1F77B4FF') +
+  geom_line(aes(y=X2), color='#FF7F0EFF') +
+  geom_line(aes(y=X3), color='#2CA02CFF') +
+  geom_line(aes(y=X4), color='#D62728FF') +
+  geom_line(aes(y=X5), color='#9467BDFF') +
+  stat_function(fun=function(x) {x}, col='black', linetype=2) +
+  labs(x="t", 
+       y="X",
+       title='Trajectory') +   
+  theme_bw() +
+  theme(plot.title = element_text(hjust=0.5),
+        legend.position = "none")
+
+Figure
+```
+
+其中黑色虚线为$E(X(t))$，彩色实线为生成的轨道.
+
+目标随机过程是单增的，这些生成的轨道也都是单增的. 注意到轨迹形似阶梯函数，有很多与$t$轴平行的线段，这和$N(t)$是Poisson过程是相符的. 各轨道围绕在均值附近振动. 这都说明我所生成的轨道是合理的.
+
+### 3.估计
+
+易得
+$$E[X(t)]=E\left[E\left[X(t)|N(t)\right]\right]=E[N(t)E(Y_1)]=E(N(t))E(Y_1)=\lambda tE(Y_1).$$
+
+同理
+$$E[X(t)^2]=E\left[\sum_{i,j=1}^{N(t)}Y_iY_j\Bigg|N(t)\right]=E\left[N(t)E(Y_1^2)+(N(t)^2-N(t))(EY_1)^2\right]=\lambda tE(Y_1^2)+(\lambda t)^2(EY_1)^2.$$
+
+因此$Var(X(t))=E(X(t)^2)-(E(x(t)))^2=\lambda t E(Y_1^2)$.
+
+根据Gamma分布的性质可知，$E(Y_1)=shape/rate$，$Var(Y_1)=shape/rate^2$，$E(Y_1^2)=(shape+shape^2)/rate^2$. 
+
+下面就$\lambda=0.1,1,10$，$shape=1,2$，$rate=1,2$的情况估计$X(10)$的均值和方差，每组参数下生成10000个随机数，使用的估计量为样本均值和样本方差.
+
+实验结果如下表：
+
+```{r}
+# 此函数用于生成不同参数下的理论值和估计值
+Estimator <- function(n, lambdas, shapes, rates, t) {
+  # n: 估计时所用样本数
+  # lambdas: Poisson过程参数，一个任意长度的向量
+  # shapes, rates: Gamma分布参数，两个都是任意长度的向量
+  # t: 时间参数，只能输入一个正数
+  # return: 一个dataframe，各列分别为lambda, shape, rate, 
+  #         theoretical_mean, estimated_mean, theoretical_variance, estimated_variance
+  
+  estimated_mean <- c()
+  estimated_variance <- c()
+  theoretical_mean <- c()
+  theoretical_variance <- c()
+  
+  # 首先将lambdas, shapes, rates的取值的各种组合生成出来
+  paras <- expand.grid(lambdas, shapes, rates)
+  colnames(paras) <- c('lambda', 'shape', 'rate')
+  
+  # 生成估计值和理论值
+  for (i in 1:nrow(paras)) {
+    Tmean <- paras[i, ]$lambda * t * paras[i, ]$shape / paras[i, ]$rate
+    Tvariance <- paras[i, ]$lambda * t * (paras[i, ]$shape + paras[i, ]$shape^2) / (paras[i, ]$rate^2)
+    theoretical_mean <- c(theoretical_mean, Tmean)
+    theoretical_variance <- c(theoretical_variance, Tvariance)
+    
+    X <- CPGPLocalGenerator(n, paras[i, ]$lambda, paras[i, ]$shape, paras[i, ]$rate, t)
+    estimated_mean <- c(estimated_mean, mean(X))
+    estimated_variance <- c(estimated_variance, var(X))
+  }
+  
+  # 生成dataframe
+  data <- paras
+  data$theoretical_mean <- theoretical_mean
+  data$estimated_mean <- estimated_mean
+  data$theoretical_variance <- theoretical_variance
+  data$eatimated_variance <- estimated_variance
+  
+  return(data)
+}
+```
+
+```{r}
+set.seed(20240922)
+
+n <- 10000
+lambdas <- c(0.1, 1, 10)
+shapes <- c(1, 2)
+rates <- c(1, 2)
+t <- 10
+
+data <- Estimator(n, lambdas, shapes, rates, t)
+
+print(data)
+```
+
+可见估计值和理论值之间非常接近.
+
+
+
+
+
+# HW2
+
+## Question 1: Exercise 5.4
+Write a function to compute a Monte Carlo estimate of the Beta(3, 3) cdf, and use the function to estimate F(x) for x = 0.1, 0.2,..., 0.9. Compare the estimates with the values returned by the pbeta function in R.
+
+
+## Answer 1
+
+### 1.算法及代码实现
+$Beta(3,3)$的密度为
+$$f(x)=30x^2(1-x)^2,\quad 0\le x\le 1.$$
+那么对应的分布函数为
+$$F(x)=\int_0^x 30t^2(1-t)^2\mathrm{d}t.$$
+当$0\le x\le 1$时，$F(x)=30x\mathbb{E}[U^2(1-U)^2]$，其中$U\sim U(0,x)$. 
+
+因此有如下算法：
+
+1. 生成$n$个$U(0,x)$随机数$u_1,\cdots,u_n$.
+
+2. 输出$\frac{30x}{n}\sum_{i=1}^n u_i^2(1-u_i)^2$.
+
+代码实现如下：
+```{r}
+pbetaEstimator <- function(x, n) {
+  # x: 目标F(x)中的x
+  # n: 估计所使用的随机数数目
+  # return: 输出估计
+  
+  # 0.排除x小于零或者大于一的情况
+  if (x < 0) {
+    return(0)
+  }
+  
+  if (x > 1) {
+    return(1)
+  }
+  
+  # 1.生成U
+  u <- runif(n, 0, x)
+  
+  # 2.输出估计
+  return(30*x*mean(u^2*(1-u)^2))
+}
+```
+
+### 2.实验结果
+
+实验结果如下表：
+```{r}
+set.seed(20240927)
+n <- 1000
+estimates <- c()
+contrast <- c()
+for (i in 1:9) {
+  estimates[i] <- pbetaEstimator(0.1*i, n)
+  contrast[i] <- pbeta(0.1*i, 3, 3)
+}
+data.frame(x=seq(0.1, 0.9, 0.1), estimate=estimates, contrast=contrast, error=estimates-contrast)
+```
+可见二者差异很小.
+
+
+## Question 2: Exercise 5.9
+
+The Rayleigh density is
+$$f(x)=\frac{x}{\sigma^2}e^{-x^2/(2\sigma^2)},\quad x\ge 0,\sigma>0.$$
+
+Implement a function to generate samples from a Rayleigh(σ) distribution, using antithetic variables. 
+
+What is the percent reduction in variance of $\frac{X+X'}{2}$ compared with $\frac{X_1+X_2}{3}$ for independent $X_1$, $X_2$?
+
+## Answer 2
+
+使用逆变换法生成随机数. 目标分布的逆为
+$$F^{-1}(x)=\sqrt{-2\sigma^2\ln(1-x)}.$$
+```{r}
+inverseF <- function(x, sigma) {
+  return(sqrt(-2 * sigma^2 * log(1-x)))
+}
+```
+
+接下来我考虑$\sigma=1$时的情况，两种方法都使用2000个随机数.
+
+```{r}
+n <- 1000 # 随机数数目的一半
+sigma <- 1
+```
+
+下面是不使用对偶变量生成随机数的代码实现：
+```{r}
+set.seed(20240928)
+u1 <- runif(n)
+u2 <- runif(n)
+v1 <- inverseF(u1, sigma)
+v2 <- inverseF(u2, sigma)
+variance1 <- var((v1+v2)/2)
+```
+
+下面是使用对偶变量生成随机数的代码实现：
+```{r}
+set.seed(20240928)
+u1 <- runif(n)
+u2 <- 1 - u1
+v1 <- inverseF(u1, sigma)
+v2 <- inverseF(u2, sigma)
+variance2 <- var((v1+v2)/2)
+```
+
+因此方差减少了
+```{r}
+(variance1-variance2)/variance1
+```
+
+
+
+
+
+## Question 3: Exercise 5.13
+
+Find two importance functions $f_1$ and $f_2$ that are supported on $(1, +\infty)$ and are ‘close’ to $$g(x) = \frac{x^2}{
+\sqrt{2\pi}} e^{−x^2/2}, \quad x> 1.$$
+
+Which of your two importance functions should produce the smaller variance in estimating
+$$\int_1^{\infty}\frac{x^2}{\sqrt{2\pi}}e^{-x^2/2}\mathrm{d}x$$
+by importance sampling? Explain.
+
+
+## Answer 3
+
+### 1.找重要性函数
+
+我们选出的重要性函数应该尽可能接近$g(x)$，下面先看看$g(x)$的形状.
+
+```{r}
+g <- function(x) {
+  return(x^2*exp(-x^2/2)/sqrt(2*pi))
+}
+
+curve(g, xlim=c(1,6))
+```
+
+可以看到$g(x)$先增再减，其次注意到$g(x)$并不是厚尾的， 因此可以选择$Gamma$分布作为重要性函数. 
+
+从另一方面看，$g(x)$基本是单调递减的，只有$x\in[1,\sqrt{2}]$时$g(x)$是单调递增的，同时$g(x)$在零附近的密度显著地大于零，因此也可以选择指数分布作为重要性函数. 
+
+综上所述，我选取$$f_1(x)=4(x-1)e^{-2(x-1)},\quad x> 1.$$
+以及
+$$f_2(x)=e^{-(x-1)},\quad x>1.$$
+
+二者和$g(x)$的形状比较如下图所示：
+
+```{r fig.align="center", fig.width = 4, fig.height=4}
+Figure <- ggplot() +
+  stat_function(fun = function(x) {3*g(x)}, aes(color="3g"), linewidth = 1.3) +
+  stat_function(fun = function(x) {dgamma(x-1, shape=2, rate=2)}, aes(color="f1"), linewidth = 1.3) +
+  stat_function(fun = function(x) {dexp(x-1, rate=1)}, aes(color="f2"), linewidth = 1.3) +
+  xlim(1, 6) + 
+  labs(x="X", 
+       y="y",
+       title="Importance Functions VS Target",
+       color="Functions") + 
+  scale_color_manual(values=c("3g"="black", "f1"="#FF410D99", "f2"="#6EE2FF99")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust=0.5))
+
+Figure
+```
+
+图中黑色曲线是$3g(x)$，这里乘一个倍数是为了方便比较这三个函数的形状. 可见我选取的两个重要性函数和$g(x)$都比较'close'. 
+
+### 2.比较二者的效果
+
+先实现重要性采样法：
+
+```{r}
+ISEstimator <- function(n, type) {
+  # n: 估计所使用的样本数
+  # type: 只能取1和2，表示取f1还是f2
+  # return: 估计值
+
+  if (type == 1) {
+    x <- rgamma(n, shape=2, rate=2)
+    result <- mean(g(x+1)/dgamma(x, shape=2, rate=2))
+  }
+  if (type == 2) {
+    x <- rexp(n, 1)
+    result <- mean(g(x+1)/dexp(x, 1))
+  }
+  
+  return(result)
+}
+```
+
+通过分部积分，我们可以计算得
+$$\int_1^\infty g(x)\mathrm{d}x=\frac{1}{\sqrt{2\pi}}e^{-1/2}+\int_1^\infty\frac{1}{\sqrt{2\pi}}e^{-x^2/2}\mathrm{d}x.$$
+可见右侧第二项是标准正态分布大于1的概率.
+
+当$n=1000$时估计结果如下
+```{r}
+set.seed(20240928)
+n <- 1000
+target <- exp(-0.5)/sqrt(2*pi) + pnorm(-1) # 根据标准正态分布的对称性，其大于1的概率等于其小于-1的概率
+data.frame(f1=ISEstimator(n, 1), f2=ISEstimator(n, 2), target=target)
+```
+可见两个估计值都与理论值相近.
+
+下面通过蒙特卡罗方法估计两种估计的方差.
+```{r}
+m <- 1000
+set.seed(20240928)
+result1 <- c()
+result2 <- c()
+for (i in 1:m) {
+  result1 <- c(result1, ISEstimator(n, 1))
+  result2 <- c(result2, ISEstimator(n, 2))
+}
+variance1 <- var(result1)
+variance2 <- var(result2)
+data.frame(variance1=variance1, variance2=variance2)
+```
+
+可见使用$f_2$的时候方差更小.
+
+
+## Question 4
+
+For $n=10^4,2\times 10^4,4\times 10^4, 6\times 10^4, 8\times 10^4$, apply the fast sorting algorithm to randomly permuted numbers of $1,\cdots,n$. 
+
+Calculate computation time averaged over 100 simulations, denoted by $a_n$.
+
+Regress $a_n$ on $t_n:=n\log n$, and graphically show the results (scatter plot and regression line).
+
+
+
+## Answer 4
+
+### 1. 算法以及代码实现
+
+算法如下：
+
+  1. 如果序列长度小于等于1则停止.
+  2. 将序列第一个元素记为$x$，将比$x$小的元素移动到$x$左侧，将比$x$大的元素移到$x$右侧.
+  3. 对$x$左右两侧两个子序列重复上述两个步骤
+
+使用递归的方法实现这个算法：
+```{r}
+QuickSort <- function(v) {
+  # 1. 如果长度小于等于一则停止
+  if (length(v) <= 1) {
+    return(v)
+  }
+  x <- v[1]
+  
+  # 2. 分成两个新向量
+  v1 <- v[v < x]
+  v2 <- v[v > x]
+  
+  # 3. 对v1和v2重复上述步骤
+  result <- c(QuickSort(v1), x, QuickSort(v2))
+  
+  return(result)
+}
+```
+
+
+### 2. 考察计算时间和nlog(n)之间的关系
+
+$a_n$计算结果如下：
+```{r}
+set.seed(20240928)
+ns <- c(1e4, 2e4, 4e4, 6e4, 8e4)
+an <- c()
+for (n in ns) {
+  ts <- c()
+  for (i in 1:100) {
+    v <- sample(1:n)
+    
+    t1 <- Sys.time()
+    v <- QuickSort(v)
+    t2 <- Sys.time()
+    
+    ts <- c(ts, t2-t1)
+  }
+  an <- c(an, mean(ts))
+}
+
+data <- data.frame(tn=ns*log(ns), an=an)
+data 
+# 我这里设置了seed但在不同的实验中a_n的值还是有波动，我怀疑是计算机自身造成的
+```
+
+$a_n$和$t_n$的散点图和回归线如下图所示：
+```{r fig.align="center", fig.width = 6, fig.height=6}
+Figure <- ggplot(data=data, aes(x=tn, y=an)) +
+  geom_point() +
+  geom_smooth(method="lm", color="#FF410D99") +
+  labs(x=expression(t[n]), 
+         y=expression(a[n]),
+         title='Scatter Plot and Regression Line') + 
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        plot.title = element_text(hjust=0.5),
+        legend.position = "none")
+
+Figure
+```
+
+
+
+
+
+
+
+# HW3
+
+## Question 1: Exercise 6.6
+
+Estimate the 0.025, 0.05, 0.95, and 0.975 quantiles of the skewness $\sqrt{b_1}$ under normality by a Monte Carlo experiment. 
+
+Compute the standard error of the estimates from $$\mathrm{Var}(\hat{x}_q)=\frac{q(1-q)}{nf(x_q)^2},$$
+using the normal approximation for the density (with exact variance formula). 
+
+Compare the estimated quantiles with the quantiles of the large sample approximation $\sqrt{b_1}\approx N(0,6/n)$.
+
+
+
+## Answer 1
+
+$\sqrt{b_1}$的表达式如下：
+$$\sqrt{b_1}=\frac{\frac{1}{n}\sum_{i=1}^n(X_i-\bar{X})^3}{(\frac{1}{n}\sum_{i=1}^n(X_i-\bar{X})^2)^{3/2}}.$$
+```{r}
+Skewness <- function(x) {
+  # x: 样本
+  # return: 样本对应的样本偏度系数
+  
+  a <- mean((x-mean(x))^3)
+  b <- var(x)^1.5
+  
+  return(a/b)
+}
+```
+
+
+
+### 1. 估计分位数
+
+每次实验的代码实现如下：
+```{r}
+MC <- function(q, n, m) {
+  # q: q分位数，这里q可以为向量
+  # n: \sqrt{b_1}中的n
+  # m: 重复次数
+  # return: 一个长度和q相同的向量，每一项为对应的q分位数
+  
+  bs <- replicate(m, expr = {
+    x <- rnorm(n)
+    Skewness(x)
+  })
+  
+  return(quantile(bs, q))
+}
+```
+
+不妨取$n=100$，每次实验重复$m=10000$次.
+```{r}
+set.seed(20241002)
+n <- 100
+m <- 10000
+qs <- c(0.025, 0.05, 0.95, 0.975)
+
+result1 <- MC(qs, n, m)
+result1
+```
+
+
+### 2. 计算标准差
+
+根据教材一第167页第七行，我使用如下公式计算$\sqrt{b_1}$的方差：
+$$\mathrm{Var}(\sqrt{b_1})=\frac{6(n-2)}{(n+1)(n+3)}.$$
+因此用$N\left(0, \frac{6(n-2)}{(n+1)(n+3)}\right)$作为$\sqrt{b_1}$的分布的近似. 因此有如下函数计算标准差：
+```{r}
+SD <- function(q, n, m) {
+  # q: q分位数
+  # n: \sqrt{b_1}中的n
+  # m: 估计分位数时一次MC实验中重复m次
+  # return: 使用正态近似\sqrt{b_1}分布后的理论标准差
+  
+  variance <- 6 * (n-2) / ((n+1) * (n+3))
+  f <- dnorm(qnorm(q, 0, sqrt(variance)), 0, sqrt(variance))
+  return(q*(1-q)/(m*f^2))
+}
+```
+
+结果如下：
+```{r}
+SD(qs, n, m)
+```
+
+### 3. 比较
+
+```{r}
+result2 <- qnorm(qs, 0, sqrt(6/n))
+data.frame(Estimate=result1, LargeSample=result2)
+```
+
+可以发现二者有一定的差异.
+
+如果将方差计算方式换成
+$$\mathrm{Var}(\sqrt{b_1})=\frac{6(n-2)}{(n+1)(n+3)}.$$
+结果如下：
+```{r}
+result3 <- qnorm(qs, 0, sqrt(6*(n-2)/((n+1)*(n+3))))
+data.frame(Estimate=result1, LargeSample=result2, NewLargeSample=result3)
+```
+
+可以发现更改方差后，估计值和大样本近似值更加接近，但接近程度还是不理想.
+
+
+
+
+## Question 2: Exercise 6.B
+
+Tests for association based on Pearson product moment correlation $\rho$, Spearman’s rank correlation coefficient $\rho_s$, or Kendall’s coefficient $\tau$, are implemented in $\mathsf{cor.test}$. 
+
+Show (empirically) that the nonparametric tests based on $\rho_s$ or $\tau$ are less powerful than the correlation test when the sampled distribution is bivariate normal. 
+
+Find an example of an alternative (a bivariate distribution $(X,Y)$ such that $X$ and $Y$ are dependent) such that at least one of the nonparametric tests have better empirical power than the correlation test against this alternative.
+
+
+
+## Answer 2
+
+在相关性检验中，原假设为$H_0:X$和$Y$不相关，对立假设为$H_a:X$和$Y$相关. 
+
+### 1. 比较Power
+
+要比较Power，首先要确定一个置信水平$\alpha$，然后由$P_{H_a}(p-value\le\alpha)$得到对应的Power，再进行比较. 设采样分布为二维正态$N(0,\Sigma)$.
+
+```{r}
+PowerEstimator <- function(method, Sigma, alpha, n, m) {
+  # method: 检验方法，只能输入"Pearson"、“Spearman”和"Kendall"
+  # Sigma: 二元正态的协方差矩阵
+  # alpha: 置信水平
+  # n: 一次检验所使用的样本数
+  # m: 一次MC实验中重复的次数
+  # return: 对应方法的Power的估计值
+  
+  tmp <- replicate(m, expr = {
+    # 1. 生成n个样本
+    samples <- mvrnorm(n, c(0, 0), Sigma)
+    x <- samples[, 1]
+    y <- samples[, 2]
+    
+    # 2. 进行检验
+    result <- cor.test(x, y, method=method)
+    
+    # 3. 是否拒绝
+    result$p.value <= alpha
+  })
+  
+  return(mean(tmp))
+}
+```
+
+为了简单起见，我考虑形如$\begin{bmatrix}1 & \sigma \\ \sigma & 1\end{bmatrix}$的$\Sigma$.
+取$n=100,m=1000,\alpha=0.01$，$\sigma$取$0.2, 0.3, 0.4, 0.5$时实验结果如下：
+
+```{r}
+set.seed(20241002)
+
+n <- 100
+m <- 1000
+alpha <- 0.01
+sigmas <- c(0.2, 0.3, 0.4, 0.5)
+
+for (sigma in sigmas) {
+  
+}
+
+PPowers <- sapply(sigmas, function(x) PowerEstimator("pearson", matrix(c(1,x,x,1),2,2), alpha, n, m))
+
+SPowers <- sapply(sigmas, function(x) PowerEstimator("spearman", matrix(c(1,x,x,1),2,2), alpha, n, m))
+
+KPowers <- sapply(sigmas, function(x) PowerEstimator("kendall", matrix(c(1,x,x,1),2,2), alpha, n, m))
+
+data.frame(sigma=sigmas, Pearson=PPowers, Spearman=SPowers, Kendall=KPowers)
+```
+
+可以看到在不同的$\sigma$取值下，基于Pearson相关系数的检验始终更有效.
+
+
+
+### 2. 找例子
+
+我们知道Pearson相关系数只能衡量线性相关关系，不容易捕获到非线性关系，因此只需给$X$和$Y$一个强烈的非线性关系即可， 比如直接取$E(Y|X)=I(X>0)$.
+
+下面我考虑这样的一个二元分布：$X\sim N(0,1)$，$Y|X\sim N(I(X>0),1)$.
+
+```{r}
+PowerEstimator <- function(method, alpha, n, m) {
+  # method: 检验方法，只能输入"Pearson"、“Spearman”和"Kendall"
+  # alpha: 置信水平
+  # n: 一次检验所使用的样本数
+  # m: 一次MC实验中重复的次数
+  # return: 对应方法的Power的估计值
+  
+  tmp <- replicate(m, expr = {
+    # 1. 生成n个样本
+    x <- rnorm(n)
+    y <- as.numeric(x>0) + rnorm(n)
+    
+    # 2. 进行检验
+    result <- cor.test(x, y, method=method)
+    
+    # 3. 是否拒绝
+    result$p.value <= alpha
+  })
+  
+  return(mean(tmp))
+}
+```
+
+取$\alpha=0.01,n=100,m=1000$，实验结果如下：
+```{r}
+set.seed(20241002)
+
+n <- 100
+m <- 1000
+alpha <- 0.01
+
+PPower <- PowerEstimator("pearson", alpha, n, m)
+SPower <- PowerEstimator("spearman", alpha, n, m)
+KPower <- PowerEstimator("kendall", alpha, n, m)
+
+data.frame(Pearson=PPower, Spearman=SPower, Kendall=KPower)
+```
+可见此时两种非参方法效果都更好.
+
+
+
+
+## Question 3
+
+If we obtain the powers for two methods under a particular simulation setting with 10,000 experiments: say, 0.651 for one method and 0.676 for another method. We want to know if the powers are different at 0.05 level.
+
+What is the corresponding hypothesis test problem?
+
+What test should we use? Z-test, two-sample t-test, paired-t test or McNemar test? Why?
+
+Please provide the least necessary information for hypothesis testing.
+
+
+
+## Answer 3
+
+### 1. 原假设与对立假设
+设这两种方法所应对的假设检验的原假设为$H_0$，对立假设为$H_a$. 将两种方法记为$M_1$和$M_2$. 记$\beta_i=P(reject\ H_0\ using\ M_i|H_a),\ i=1,2$. 
+
+因此Question 3 对应的假设检验为：$H'_0:\beta_1=\beta_2\leftrightarrow H'_a:\beta_1\ne\beta_2$.
+
+
+
+### 2. 检验的方法
+
+记$I_{ki}$为“在$H_a$成立的条件下第$k$次实验中使用$M_i$拒绝$H_0$”的示性函数，那么$I_{ki}\sim B(1,\beta_i)$. 从题意看，应该是每次实验生成样本后，基于这些生成的样本分别使用两种方法进行假设检验，因此$I_{k1}$和$I_{k2}$是相关的，而$\{(I_{k1},I_{k2})\}_{k=1}^m$是独立的. 记$p_i=\frac{1}{m}\sum_{k=1}^m I_{ki},\ i=1,2$，可见$p_i$即为$M_i$的Power的估计值. 
+
+从题目给的信息来看，我确切能知晓的数据只有$p_i$，而不知晓$I_{ki}$的具体取值. 在这种情况下，我认为这四种方法都是行不通的.
+
+
+
+#### (1). Z-test
+由于$\beta_1-\beta_2=E(I_{k1}-I_{k2})$，因此实际上是要检验$I_{k1}-I_{k2}$的总体均值是否为零. 而且在$H'_0$成立时，我们很容易得到CLT：
+$$\frac{\sqrt{m}(p_1-p_2)}{\sqrt{\mathrm{Var}(I_{11}-I_{12})}}=\frac{\sqrt{m}\left(\frac{1}{m}\sum_{k=1}^m(I_{k1}-I_{k2})\right)}{\sqrt{\mathrm{Var}(I_{11}-I_{12})}}\to N(0,1)\quad m\to\infty.$$
+那么如果要进行Z-test，现在只需要找到一个办法估计$\mathrm{Var}(I_{11}-I_{12})$. 如果我们知道所有$I_{ki}$的取值，那么直接使用$\{I_{k1}-I_{k2}\}$的样本二阶矩来估计就行了(在$H'_0$成立时$I_{k1}-I_{k2}$的总体方差等于总体二阶矩). 但是如果我们不知道$I_{ki}$，只有$p_1$和$p_2$，我们就估计不了这个方差，因为我们处理不了$\mathrm{Cov}(I_{11},I_{12})$. 
+
+如果我们知道所有$I_{ki}$的取值，使用
+$$\frac{\sqrt{m}(p_1-p_2)}{\sqrt{\frac{1}{m}\sum_{k=1}^m(I_{k1}-I_{k2})^2}}=\frac{\sqrt{m}(p_1-p_2)}{\sqrt{p_1+p_2-\frac{2}{m}\sum_{k=1}^mI_{k1}I_{k2}}}\to N(0,1).$$
+即可进行Z-test. 
+
+
+
+
+#### (2). two-sample t-test and paired-t test
+
+这都不是正态总体，显然不能使用t-test.
+
+就算是考虑大样本情形，由于$I_{k1}$和$I_{k2}$不独立，显然two-sample t-test也是不能用的. 而对于paired-t test，它的情况和前面的Z-test是类似的，如果只知道$p_1$和$p_2$是无法得到$\{I_{k1}-I_{k2}\}$的样本标准差的. 
+
+
+
+#### (3). McNemar test
+
+“$M_1$接受$H_0$而$M_2$拒绝$H_0$”的频数为$\sum_{k=1}^mI_{k2}(1-I_{k1})$，“$M_1$拒绝$H_0$而$M_2$接受$H_0$”的频数为$\sum_{k=1}^mI_{k1}(1-I_{k2})$. 因此对应的McNemar检验统计量为
+$$\chi^2=\frac{m^2(p_1-p_2)^2}{mp_1+mp_2-2\sum_{k=1}^mI_{k1}I_{k2}}.$$
+
+可以看到，如果我们只有$p_1$和$p_2$，我们也是无法得到$\chi^2$. 另外我们可以注意到这个统计量实际上是我在前面给出的Z-test统计量的平方. 
+
+
+### 3. 检验所需信息
+从上述讨论可以发现，已知$p_1$和$p_2$的情况下，要进行假设检验，还需要知道$\sum_{k=1}^mI_{k1}I_{k2}$即“$M_1$和$M_2$都拒绝$H_0$”的频数.
+
+
+
+
+
+
+
+# HW4
+
+
+## Question 1:
+
+Of $N = 1000$ hypotheses, 950 are null and 50 are alternative. The p-value under any null hypothesis is uniformly distributed (use runif), and the p-value under any alternative hypothesis follows the beta distribution with parameter 0.1 and 1 (use rbeta). 
+
+Obtain Bonferroni adjusted p-values and B-H adjusted p-values.
+
+Calculate FWER, FDR, and TPR under nominal level $\alpha$ = 0.1 for each of the two adjustment methods based on $m = 10000$ simulation replicates. 
+
+You should output the 6 numbers (3 ) to a 3 × 2 table (column names: Bonferroni correction, B-H correction; row names: FWER, FDR, TPR).
+
+Comment the results.
+
+
+
+## Answer 1:
+
+```{r}
+alpha <- 0.1
+m <- 10000
+N <- 1000
+N0 <- 950
+```
+
+```{r}
+set.seed(20241016)
+
+result1 <- replicate(m, expr={
+  ps <- c(runif(N0), rbeta(N-N0, 0.1, 1))
+  ps.Bon <- p.adjust(ps, method="bonferroni")
+  ps.BH <- p.adjust(ps, method="fdr")
+  
+  V.Bon <- sum(ps.Bon[1:N0]<alpha)
+  S.Bon <- sum(ps.Bon[(N0+1):N]<alpha)
+  R.Bon <- V.Bon + S.Bon
+  
+  V.BH <- sum(ps.BH[1:N0]<alpha)
+  S.BH <- sum(ps.BH[(N0+1):N]<alpha)
+  R.BH <- V.BH + S.BH
+  
+  FWER.Bon <- as.numeric(V.Bon>0)
+  FDR.Bon <- V.Bon / R.Bon
+  TPR.Bon <- S.Bon / (N - N0)
+  
+  FWER.BH <- as.numeric(V.BH>0)
+  FDR.BH <- V.BH / R.BH
+  TPR.BH <- S.BH / (N - N0)
+  
+  c(FWER.Bon, FDR.Bon, TPR.Bon, FWER.BH, FDR.BH, TPR.BH)
+})
+
+result2 <- rowMeans(result1)
+result3 <- data.frame(Bonferroni=result2[1:3], BH=result2[4:6])
+rownames(result3) <- c("FWER", "FDR", "TPR")
+result3
+```
+
+使用Bonferroni修正时，$\mathrm{FWER}=0.0938< 0.1=\alpha$，这印证了Bonferroni修正能控制FWER，使之小于$\alpha$. 使用B-H修正时，$\mathrm{FDR}=0.09591136<0.1=\alpha$，这也印证了B-H修正能将FDR控制在$\alpha$以下. 使用Bonferroni修正时，各项指标都比使用B-H修正时低，这说明了Bonferroni修正的保守。
+
+
+
+## Question 2: Exercise 7.4
+
+Refer to the air-conditioning data set $\textsf{aircondit}$ provided in the $\textsf{boot}$ package. The 12 observations are the times in hours between failures of airconditioning equipment:
+$$3, 5, 7, 18, 43, 85, 91, 98, 100, 130, 230, 487.$$
+Assume that the times between failures follow an exponential model $\mathrm{Exp}(\lambda)$.
+
+Obtain the MLE of the hazard rate $\lambda$ and use bootstrap to estimate the bias and standard error of the estimate.
+
+
+
+## Answer 2:
+
+记第$i$个观测量为$X_i$，$X_i\sim \mathrm{Exp}(\lambda)$. 则对数似然函数为
+$$l=\sum_{i=1}^n(\ln\lambda-\lambda X_i).$$
+则$\lambda$的MLE为$\hat{\lambda}=1/\bar{X}$.
+```{r}
+lambda.hat <- 1/mean(aircondit$hours)
+lambda.hat
+```
+
+使用bootstrap估计此估计量的偏差和标准差的结果如下
+```{r}
+set.seed(20241016)
+MLE <- function(x, i) 1/mean(x[i])
+result <- boot::boot(data=boot::aircondit$hours, statistic=MLE, R=1e4)
+round(c(original=result$t0, bias=mean(result$t)-result$t0, se=sd(result$t)), 3)
+```
+
+
+
+
+
+
+
+## Question 3: Exercise 7.5
+
+Refer to Exercise 7.4. Compute 95% bootstrap confidence intervals for the mean time between failures $1/\lambda$ by the standard normal, basic, percentile, and BCa methods. Compare the intervals and explain why they may differ.
+
+
+## Answer 3:
+
+使用$\bar{X}$估计$1/\lambda$.
+
+```{r}
+set.seed(20241016)
+boot.mean <- function(x, i) mean(x[i])
+boot.obj <- boot::boot(data=boot::aircondit$hours, statistic=boot.mean, R=1e4)
+CI <- boot::boot.ci(boot.obj, conf=0.95, type=c("norm", "basic", "perc", "bca"))
+CI
+```
+得到的置信区间为: 
+
+(1). Standard normal: (35.1, 182.0)
+
+(2). Basic: (25.0, 169.2)
+
+(3). Percentile: (46.9, 191.2)
+
+(4). BCa: (56.7, 225.9)
+
+不同的方法原理不同，并且BCa方法是二阶精度，其他三种方法只有一阶精度，所以这些区间有所不同.
+
+
+
+
+# HW5
+
+## Question 1: Exercise 7.8
+
+The five-dimensional scores data have a $5\times5$ covariance matrix $\Sigma$, with positive eigenvalues $\lambda_1>\cdots>\lambda_5$. In principal components analysis,
+$$\theta=\frac{\lambda_1}{\sum_{j=1}^5\lambda_j}$$
+measures the proportion of variance explained by the first principal component. Let $\hat{\lambda}_1>\cdots>\hat{\lambda}_5$ be the eigenvalues of $\hat{\Sigma}$, which is the MLE of $\Sigma$. The sample estimate of $\theta$ is 
+$$\hat\theta=\frac{\hat\lambda_1}{\sum_{j=1}^5\hat\lambda_j}.$$
+Obtain the jackknife estimates of bias and standard error of $\hat\theta$.
+
+## Answer 1:
+
+```{r} 
+data <- bootstrap::scor
+
+Sigma.hat <- cov(data)
+lambdas.hat <- eigen(Sigma.hat)$values
+theta.hat <- lambdas.hat[1]/sum(lambdas.hat)
+
+thetas.jack <- c()
+for (i in 1:dim(data)[1]) {
+  x <- data[-i, ]
+  Sigma.jack <- cov(x)
+  lambdas.jack <- eigen(Sigma.jack)$values
+  theta.jack <- lambdas.jack[1]/sum(lambdas.jack)
+  thetas.jack <- c(thetas.jack, theta.jack)
+}
+
+bias.jack <- (dim(data)[1]-1)*(mean(thetas.jack)-theta.hat)
+se.jack <- sqrt((dim(data)[1]-1)*mean((thetas.jack-theta.hat)^2))
+
+round(c(original=theta.hat, bias.jack=bias.jack, se.jack=se.jack), 3)
+```
+
+
+
+## Question 2: Exercise 7.10
+
+In Example 7.18, leave-one-out (n-fold) cross validation was used to select the best fitting model. 
+
+Repeat the analysis replacing the Log-Log model with a cubic polynomial model. 
+
+Which of the four models is selected by the cross validation procedure? 
+
+Which model is selected according to maximum adjusted $R^2$?
+
+
+## Answer 2:
+
+```{r}
+data <- DAAG::ironslag
+L1 <- lm(magnetic ~ chemical, data)
+L2 <- lm(magnetic ~ chemical + I(chemical^2), data)
+L3 <- lm(log(magnetic) ~ chemical, data)
+L4 <- lm(magnetic ~ chemical + I(chemical^2) + I(chemical^3), data)
+
+n <- length(data$magnetic)
+e1 <- e2 <- e3 <- e4 <- numeric(n)
+
+for (k in 1:n) {
+  y <- data$magnetic[-k]
+  x <- data$chemical[-k]
+  
+  J1 <- lm(y ~ x)
+  yhat1 <- J1$coef[1] + J1$coef[2] * data$chemical[k]
+  e1[k] <- data$magnetic[k] - yhat1
+  
+  J2 <- lm(y ~ x + I(x^2))
+  yhat2 <- J2$coef[1] + J2$coef[2] * data$chemical[k] + J2$coef[3] * data$chemical[k] ^ 2
+  e2[k] <- data$magnetic[k] - yhat2
+  
+  J3 <- lm(log(y) ~ x)
+  logyhat3 <- J3$coef[1] + J3$coef[2] * data$chemical[k]
+  yhat3 <- exp(logyhat3)
+  e3[k] <- data$magnetic[k] - yhat3
+  
+  J4 <- lm(y ~ x + I(x^2) + I(x^3))
+  yhat4 <- J4$coef[1] + J4$coef[2] * data$chemical[k] + J4$coef[3] * data$chemical[k]^2 + J4$coef[4] * data$chemical[k]^3
+  e4[k] <- data$magnetic[k] - yhat4
+}
+
+c(mean(e1^2), mean(e2^2), mean(e3^2), mean(e4^2))
+```
+通过交叉检验，应该选择二次模型.
+
+
+```{r}
+summary(L1)
+```
+
+```{r}
+summary(L2)
+```
+
+```{r}
+summary(L3)
+```
+
+```{r}
+summary(L4)
+```
+四种模型的adjusted $R^2$分别为0.5282、0.5768、0.5281，0.574. 可见二次模型的adjusted $R^2$最大.
+
+## Question 3: Exercise 8.1
+
+Implement the two-sample Cramer-von Mises test for equal distributions as a
+permutation test. Apply the test to the data in Examples 8.1 and 8.2.
+
+## Answer 3:
+
+```{r}
+x <- sort(as.vector(chickwts$weight[chickwts$feed=="soybean"]))
+y <- sort(as.vector(chickwts$weight[chickwts$feed=="linseed"]))
+```
+
+```{r}
+CMtest <- function(x, y) {
+  n <- length(x)
+  m <- length(y)
+  z <- c(x, y)
+  
+  Fn <- ecdf(x)
+  Gm <- ecdf(y)
+  
+  W <- m*n / (m+n)^2 * sum((Fn(z)-Gm(z))^2)
+  
+  return(W)
+}
+```
+
+```{r}
+set.seed(20241025)
+
+n <- length(x)
+m <- length(y)
+
+R <- 999
+z <- c(x, y)
+
+W0 <- CMtest(x, y)
+W <- numeric(R)
+for (i in 1:R) {
+  k <- sample(1:(n+m), size=n, replace=FALSE)
+  x1 <- z[k]
+  y1 <- z[-k]
+  W[i] <- CMtest(x1, y1)
+}
+p <- mean(c(W0, W) >= W0)
+p
+```
+
+```{r}
+hist(W, main="", freq=FALSE, breaks = "scott")
+points(W0, 0, cex=1, pch=16)
+```
+
+ASL为0.426，不足以拒绝原假设.
+
+
+## Question 4: Exercise 8.2
+
+Implement the bivariate Spearman rank correlation test for independence as a permutation test. The Spearman rank correlation test statistic can be obtained from function $\mathsf{cor}$ with $\mathsf{method = "spearman"}$. 
+
+Compare the achieved significance level of the permutation test with the p-value reported by $\mathsf{cor.test}$ on the same samples.
+
+## Answer 4: 
+
+实验所用样本来自$(X,Y)\sim N(0,\Sigma)$，其中$\Sigma=\begin{bmatrix} 1 & \sigma \\ \sigma & 1 \end{bmatrix}$. 
+
+```{r}
+SampleGenerator <- function(n, sigma) {
+  # n: 生成的样本数
+  # sigma: 正态分布的参数
+  # return: x和y
+  
+  Sigma <- matrix(c(1, sigma, sigma, 1), 2, 2)
+  samples <- mvrnorm(n, c(0,0), Sigma)
+  return(samples)
+}
+
+```
+
+```{r}
+SpearmanTest <- function(x, y, R) {
+  # x, y: 数据
+  # R: permutation重复次数
+  # return: 近似ASL和p值
+  
+  test0 <- cor(x, y, method="spearman")
+  tests <- replicate(R, expr = {
+    x1 <- sample(x, replace=FALSE)
+    cor(x1, y, method="spearman")
+  })
+  ASL <- mean(c(abs(tests), abs(test0)) >= abs(test0))
+  p <- cor.test(x, y, method="spearman")$p.value
+  
+  return(c(ASL=ASL, p.value=p))
+}
+```
+
+取样本数目$n=25$，重复次数$R=999$，对$\sigma=0.1,0.3,0.5$时的情况进行了实验.
+
+```{r}
+set.seed(20241027)
+n <- 25
+sigmas <- c(0.1, 0.3, 0.5)
+R <- 999
+
+ASLs <- c()
+p.values <- c()
+for (sigma in sigmas) {
+  samples <- SampleGenerator(n, sigma)
+  x <- samples[, 1]
+  y <- samples[, 2]
+  result <- SpearmanTest(x, y, R)
+  ASLs <- c(ASLs, result[1])
+  p.values <- c(p.values, result[2])
+}
+
+data.frame(sigma=sigmas, ASL=ASLs, p.value=p.values)
+```
+
+可见ASL和p值相近.
+
+
+
+
+
+# HW6
+
+## Question 1: Exercies 9.3
+
+Use the Metropolis-Hastings sampler to generate random variables from a standard Cauchy distribution. 
+
+Discard the first 1000 of the chain, and compare the deciles of the generated observations with the deciles of the standard Cauchy distribution (see qcauchy or qt with df=1). 
+
+Recall that a $\mathrm{Cauchy}(\theta, \eta)$ distribution has density function
+$$f(x)=\frac{1}{\theta\pi(1+[(x-\eta)/\theta]^2)},\quad -\infty<x<\infty,\ \theta>0.$$
+The standard Cauchy has the $\mathrm{Cauchy}(\theta = 1, \eta = 0)$ density. (Note that the standard Cauchy density is equal to the Student t density with one degree of freedom.)
+
+
+
+## Answer 1:
+
+使用随机游走Metropolis算法，取提议分布为$N(X_t,\sigma^2)$，则接受概率为$f(Y)/f(X_t)=\frac{\theta^2+(X_t-\eta)^2}{\theta^2+(Y-\eta)^2}$.
+
+```{r}
+CauchyGenerator <- function(N, theta, eta, x0, sigma) {
+  # n: 生成的样本数
+  # theta, eta: Cauchy分布的参数
+  # x0: 初始值
+  # sigma: 提议分布的参数
+  # return: 长度为n的向量
+  
+  x <- numeric(N)
+  x[1] <- x0
+  u <- runif(N) # 用于和接受概率比较
+  for (i in 2:N) {
+    y <- rnorm(1, x[i-1], sigma)
+    if (u[i] <= dcauchy(y, eta, theta)/dcauchy(x[i-1], eta, theta)) {
+      x[i] <- y
+    }
+    else{
+      x[i] <- x[i-1]
+    }
+  }
+  return(x)
+}
+```
+
+```{r}
+set.seed(20241031)
+
+N <- 5000
+theta <- 1
+eta <- 0
+sigma <- 4
+x0 <- 30
+
+x <- CauchyGenerator(N, theta, eta, x0, sigma)
+```
+
+```{r}
+plot(x, type="l")
+```
+
+收敛情况不错.
+
+```{r}
+hist(x[1001:5000], breaks="scott", proba=TRUE, ylim=c(0, 0.3), main="", xlab="x")
+curve(dcauchy, col="red", add=TRUE)
+```
+
+从直方图来看，生成的样本符合目标分布.
+
+```{r}
+qs <- seq(0.1, 0.9, 0.1)
+result1 <- qcauchy(qs)
+result2 <- quantile(x[1001:5000], probs=qs)
+data.frame(q=qs, Cauchy=result1, Observation=result2, Differece=result2-result1)
+```
+理论十分位数和样本十分位数相差不是很大，看起来离0越远的地方估计效果越差，这可能是因为Cauchy分布是个厚尾分布，导致随机游走过程中可能会长时间都留在远离0的部分.
+
+
+
+## Question 2: Exercies 9.8
+
+Consider the bivariate density
+$$f(x,y)\propto \binom{n}{x}y^{x+a-1}(1-y)^{n-x+b-1},\ x=0,1,\dots, n,\ 0\le y\le 1.$$
+It can be shown that for fixed $a, b, n$, the conditional distributions are $\mathrm{Binomial}(n, y)$ and $\mathrm{Beta}(x + a, n − x + b)$. 
+
+Use the Gibbs sampler to generate a chain with target joint density $f(x, y)$.
+
+
+## Answer 2:
+
+```{r}
+GibbsSampler <- function(N, z0, a, b, n) {
+  # N: 生成样本数
+  # z0: 初始值，一个二维向量
+  # a, b, n: 目标分布的参数
+  # return: Nx2的矩阵
+  
+  z <- matrix(nrow=N, ncol=2)
+  z[1, ] <- z0
+  x <- z0[1]
+  y <- z0[2]
+  for (i in 2:N) {
+    x <- rbinom(1, n, y)
+    y <- rbeta(1, x+a, n-x+b)
+    z[i, ] <- c(x, y)
+  }
+  return(z)
+}  
+```
+
+```{r}
+set.seed(20241101)
+N <- 1000
+z0 <- c(0, 0)
+a <- 1
+b <- 1
+n <- 10
+z <- GibbsSampler(N, z0, a, b, n)
+```
+
+生成效果如下：
+```{r} 
+plot(z[,1], type="l", ylab="x", ylim=c(-1, 11))
+plot(z[,2], type="l", ylab="y", ylim=c(-1, 2))
+```
+
+
+## Question 3:
+
+For each of the above exercise, use the Gelman-Rubin method to monitor convergence of the chain, and run the chain until it converges approximately to the target distribution according to $\hat{R}<1.2$.
+
+## Answer 3:
+
+对于Question1，选取$\psi_{ij}$为第$i$条链直到时间$j$的样本均值. 对于Question2，选取$\psi_{ij}$为第$i$条链直到时间$j$的$y$的样本均值.
+
+```{r}
+GR <- function(psi) {
+  n <- ncol(psi)
+  k <- nrow(psi)
+  psi.means <- rowMeans(psi)
+  B <- n * var(psi.means)
+  psi.w <- apply(psi, 1, "var")
+  W <- mean(psi.w)
+  v.hat <- W * (n-1)/n + B/n
+  r.hat <- v.hat / W
+  return(r.hat)
+}
+```
+
+### Question 1:
+
+因为Cauchy厚尾，所以随机游走容易滞留在尾部. 因此我取较大的$\sigma$，使得随机游走每一步走得尽量的远，一定程度上减少滞留的时间.
+```{r}
+set.seed(20241101)
+
+N <- 8000
+burn <- 1000
+theta <- 1
+eta <- 0
+sigma <- 4
+x0 <- c(-10, -5, 5, 10)
+
+X <- matrix(nrow=length(x0), ncol=N)
+for (i in 1:length(x0)) {
+  X[i, ] <- CauchyGenerator(N, theta, eta, x0[i], sigma)
+}
+
+psi <- t(apply(X, 1, cumsum))
+for (i in 1:nrow(psi)) {
+  psi[i, ] <- psi[i, ] / (1:ncol(psi))
+}
+rhat <- rep(0, N)
+for (j in (burn+1):N) {
+  rhat[j] <- GR(psi[,1:j])
+}
+```
+
+```{r fig.align="center", fig.width = 6, fig.height=6}
+par(mfrow=c(2, 2))
+par(mar=c(4, 4, 2, 2))
+for (i in 1:length(x0)) {
+  plot(psi[i, (burn+1):N], type="l", xlab=i, ylab=bquote(psi))
+}
+```
+
+```{r}
+plot(rhat[(burn+1):N], type="l", xlab="", ylab="R")
+abline(h=1.2, lty=2)
+```
+
+```{r}
+N0 <- which(rhat[(burn+1):N]<1.2)[1]
+N0
+```
+N0即为$\hat{R}$第一次小于1.2的时刻.
+
+N0之前的链如下所示：
+```{r fig.align="center", fig.width = 6, fig.height=6}
+par(mfrow=c(2, 2))
+par(mar=c(4, 4, 2, 2))
+for (i in 1:length(x0)) {
+  plot(X[i, 1:N0], type="l", xlab=i, ylab="x")
+}
+```
+
+
+
+### Question 2:
+
+```{r fig.align="center", fig.width = 6, fig.height=6}
+set.seed(20241102)
+
+N <- 2000
+burn <- 500
+x0 <- c(0, 0, 0, 0)
+y0 <- c(0.2, 0.4, 0.6, 0.8)
+a <- 1
+b <- 1
+n <- 10
+
+X <- matrix(nrow=length(x0), ncol=N)
+Y <- matrix(nrow=length(x0), ncol=N)
+for (i in 1:length(x0)) {
+  z <- GibbsSampler(N, c(x0[i], y0[i]), a, b, n)
+  X[i, ] <- as.numeric(z[, 1])
+  Y[i, ] <- as.numeric(z[, 2])
+}
+
+psi <- t(apply(Y, 1, cumsum))
+for (i in 1:nrow(psi)) {
+  psi[i, ] <- psi[i, ] / (1:ncol(psi))
+}
+rhat <- rep(0, N)
+for (j in (burn+1):N) {
+  rhat[j] <- GR(psi[,1:j])
+}
+
+par(mfrow=c(2,2))
+par(mar=c(4, 4, 2, 2))
+for (i in 1:length(x0)) {
+  plot(psi[i, (burn+1):N], type="l", xlab=i, ylab=bquote(psi))
+}
+```
+
+```{r}
+par(mfrow=c(1,1))
+plot(rhat[(burn+1):N], type="l", xlab="", ylab="R")
+abline(h=1.2, lty=2)
+```
+```{r}
+N0 <- which(rhat[(burn+1):N]<1.2)[1]
+N0
+```
+N0即为$\hat{R}$第一次小于1.2的时刻.
+
+N0之前的链如下所示：
+```{r fig.align="center", fig.width = 6, fig.height=6}
+par(mfrow=c(2,2))
+par(mar=c(4, 4, 2, 2))
+for (i in 1:length(x0)) {
+  plot(X[i, 1:N0], type="l", xlab=i, ylab="")
+  lines(Y[i, 1:N0], col="red")
+}
+```
+
+
+
+
+
+
+# HW7
+
+
+
+
+
+## Question 1: Exercise 11.3
+
+(a) Write a function to compute the $k$th term in
+$$
+\sum_{k=0}^\infty\frac{(-1)^k}{k!2^k}\frac{\|a\|^{2k+2}}{(2k+1)(2k+2)}\frac{\Gamma\left(\frac{d+1}{2}\right)\Gamma\left(k+\frac{3}{2}\right)}{\Gamma\left(k+\frac{d}{2}+1\right)},
+$$
+where $d \ge 1$ is an integer, $a$ is a vector in $\mathbb{R}^d$, and $\|\cdot\|$ denotes the Euclidean norm.
+
+Perform the arithmetic so that the coefficients can be computed for (almost) arbitrarily large $k$ and $d$. (This sum converges for all $a\in\mathbb{R}^d$.
+
+(b) Modify the function so that it computes and returns the sum.
+
+(c) Evaluate the sum when $a = (1, 2)^T$ .
+
+
+## Answer 1:
+
+### (a).
+
+```{r}
+kthTerm <- function(d, a, k) {
+  return((-1)^k*exp((k+1)*log(sum(a^2))+lgamma((d+1)/2)+lgamma(k+1.5)-lgamma(k+1)-k*log(2)-lgamma(k+d/2+1)))
+}
+```
+
+```{r} 
+ks <- c(2, 5, 10, 100, 101, 10000, 10001)
+ds <- c(2, 5, 10, 100, 101, 10000, 10001)
+
+set.seed(20241107)
+result <- c()
+for (k in ks) {
+  for (d in ds) {
+    a <- rnorm(d) # 随机取一个a
+    result <- c(result, kthTerm(d, a, k))
+  }
+}
+result
+```
+
+可见对于几乎任意大的$k$和$d$，上述函数仍然能有效运行.
+
+
+### (b).
+
+```{r}
+SumComputer <- function(d, a, error) {
+  result <- kthTerm(d, a, 0)
+  k <- 1
+  term <- kthTerm(d, a, k)
+  while (term > error) {
+    result <- result + term
+    k <- k + 1
+    term <- kthTerm(d, a, k)
+  }
+  return(result)
+}
+```
+
+```{r}
+set.seed(20241107)
+error <- 1e-5
+result <- c()
+for (d in ds) {
+  a <- rnorm(d) # 随机取一个a
+  result <- c(result, SumComputer(d, a, error))
+}
+result
+```
+
+运行效果不错.
+
+
+### (c).
+
+```{r}
+d <- 2
+a <- c(1, 2)
+error <- 1e-5
+SumComputer(d, a, error)
+```
+
+
+## Question 2: Exercise 11.5
+
+Write a function to solve the equation
+$$
+\frac{2\Gamma\left(\frac{k}{2}\right)}{\sqrt{\pi(k-1)}\Gamma\left(\frac{k-1}{2}\right)}\int_0^{c_{k-1}}\left(1+\frac{u^2}{k-1}\right)^{-k/2}\mathrm{d}u=\frac{2\Gamma\left(\frac{k+1}{2}\right)}{\sqrt{\pi k}\Gamma\left(\frac{k}{2}\right)}\int_0^{c_k}\left(1+\frac{u^2}{k}\right)^{-(k+1)/2}\mathrm{d}u
+$$
+for a, where
+$$c_k=\sqrt{\frac{a^2k}{k+1-a^2}}.$$
+Compare the solutions with the points $A(k)$ in Exercise 11.4.
+
+
+## Answer 2:
+
+### 计算零点:
+
+```{r}
+# 被积函数
+f <- function(x, k) {
+  return((1+x^2/k)^(-k/2))
+}
+
+# 计算c_k
+ck <- function(a, k) {
+  return(sqrt(a^2*k/(k+1-a^2)))
+}
+```
+
+```{r}
+EquationSolver <- function(k, interval) {
+  target <- function(a) {
+    c1 <- ck(a, k-1)
+    c2 <- ck(a, k)
+    I1 <- integrate(f, lower=0, upper=c1, k=k-1)$value
+    I2 <- integrate(f, lower=0, upper=c2, k=k)$value
+    return(lgamma(k/2)-0.5*log(k-1)-lgamma((k-1)/2)+log(I1)-lgamma((k+1)/2)+0.5*log(k)+lgamma(k/2)-log(I2))
+  }
+  solution <- uniroot(target, interval)
+  return(solution$root)
+}
+```
+
+```{r}
+ks <- c(4:25, 100, 500, 1000)
+result1 <- c()
+for (k in ks) {
+  result1 <- c(result1, EquationSolver(k, c(0.01, sqrt(k)-0.01)))
+}
+data.frame(k=ks, solution=result1)
+```
+
+### 比较:
+
+```{r}
+result2 <- c()
+for (k in ks) {
+  solution <- uniroot(f=function(a) {
+    pt(ck(a, k-1), k-1, lower.tail=FALSE)-pt(ck(a, k), k, lower.tail=FALSE)
+    }, 
+    c(0.01, sqrt(k)-0.01))
+  result2 <- c(result2, solution$root)
+}
+data.frame(k=ks, sqrt.k=sqrt(ks), Exercise11.4=result2, Exercise11.5=result1)
+```
+
+注意到Exercise 11.4得到的结果总是比Exercise 11.5得到的结果大，并且从$k=500$开始，Exercise 11.4倾向于取右端点$a=\sqrt{k}-0.01$而不能求得真正的解.
+
+
+
+## Question 3:
+
+Suppose $T_1,\dots, T_n$ are i.i.d. samples drawn from the exponential distribution with expectation $\lambda$. Those values greater than $\tau$ are not observed due to right censorship, so that the observed values are $Y_i = T_iI(T_i ≤ \tau ) + \tau I(T_i > τ ),\ i = 1,\dots , n$. Suppose $\tau=1$ and the observed $Y_i$ values are as follows:
+$$0.54, 0.48, 0.33, 0.43, 1.00, 1.00, 0.91, 1.00, 0.21, 0.85$$
+Use the E-M algorithm to estimate $\lambda$, compare your result with the observed data MLE (note: Yi follows a mixture
+distribution).
+
+
+## Answer 3:
+
+### EM算法
+
+$T_1,\dots,T_n$的对数似然为
+$$l=\sum_{i=1}^n\log\left(\frac{1}{\lambda}e^{-T_i/\lambda}\right)=-\frac{1}{\lambda}\sum_{i=1}^nT_i-n\log(\lambda).$$
+
+观测数据设为$T_1,\dots,T_m$和$X_{m+1}=I(T_{m+1}>\tau),\cdots,X_n=I(T_{n}>\tau)$，记$X^{(0)}=(T_1,\dots,T_m,X_{m+1},\dots,X_n)$.
+
+E-Step:
+
+$$l_k=\mathbb{E}_{\hat{\lambda}_k}(l|X^{(o)})=-\frac{1}{\lambda}\sum_{i=1}^mT_i-\frac{1}{\lambda}\sum_{i=m+1}^n\mathbb{E}(T_i|X_i)-n\log(\lambda).$$
+
+在$X_i$均为1的情况下，上式等于
+$$l_k=-\frac{1}{\lambda}\sum_{i=1}^mT_i-\frac{n-m}{\lambda}(\hat\lambda_k+\tau)-n\log\lambda.$$
+
+M-Step:
+
+$$\frac{\partial l_k}{\partial\lambda}=\frac{1}{\lambda^2}\sum_{i=1}^m T_i+\frac{(n-m)(\hat{\lambda}_k+\tau)}{\lambda^2}-\frac{n}{\lambda}.$$
+
+因此
+$$\hat{\lambda}_{k+1}=\frac{1}{n}\sum_{i=1}^mT_i+\frac{n-m}{n}(\hat\lambda_k+\tau)=\frac{1}{n}\sum_{i=1}^nY_i+\frac{n-m}{n}\hat\lambda_k.$$
+
+```{r}
+Ys <- c(0.54, 0.48, 0.33, 0.43, 1.00, 1.00, 0.91, 1.00, 0.21, 0.85)
+```
+
+```{r}
+EM <- function(Ys, N, lambda0) {
+  lambda <- lambda0
+  m <- sum(Ys<1)
+  n <- length(Ys)
+  for (i in 1:N) {
+    lambda <- mean(Ys) + (1 - m/n)*lambda
+  }
+  return(lambda)
+}
+```
+
+```{r}
+lambda1 <- EM(Ys, 100, 0.1)
+lambda1
+```
+
+
+### MLE
+
+$P(Y_i=1)=e^{-1/\lambda}$，因此$Y_1,\dots,Y_n$的对数似然为
+$$l=\sum_{i=1}^n\left[\log\left(\frac{1}{\lambda}e^{-Y_i/\lambda}\right)I(Y_i<1)+\log(e^{-1/\lambda})I(Y_i=1)\right].$$
+则
+$$\frac{\partial l}{\partial\lambda}=-\frac{\sum_{i=1}^nI(Y_i<1)}{\lambda}+\frac{\sum_{i=1}^nY_iI(Y_i<1)}{\lambda^2}+\frac{\sum_{i=1}^nI(Y_i=1)}{\lambda^2}.$$
+因此MLE为
+$$\hat{\lambda}=\frac{\sum_{i=1}^nY_iI(Y_i<1)+\sum_{i=1}^nI(Y_i=1)}{\sum_{i=1}^nI(Y_i<1)}=\frac{\sum_{i=1}^n Y_i}{\sum_{i=1}^nI(Y_i<1)}.$$
+```{r}
+lambda2 <- sum(Ys)/sum(Ys<1)
+lambda2
+```
+可见两种估计的结果一致. 
+
+
+
+
+
+
+# HW8
+
+
+## Question 1: 
+
+Use the simplex algorithm to solve the following problem. Minimize $4x + 2y + 9z$ subject to
+$$
+\begin{aligned}
+  & 2x + y + z ≤ 2 \\
+  & x − y + 3z ≤ 3 \\
+  & x ≥ 0, y ≥ 0, z ≥ 0.
+\end{aligned}
+$$
+
+## Answer 1:
+
+```{r}
+f.obj <- c(4, 2, 9)
+f.con <- matrix(c(2, 1, 1, -1, 1, 3), nrow=2, ncol=3)
+f.dir <- rep("<=", 2)
+f.rhs <- c(2, 3)
+res.lp <- lp("min", f.obj, f.con, f.dir, f.rhs)
+res.lp$solution
+```
+可见最小值为0.
+
+
+
+## Question 2:
+
+Use both for loops and `lapply()` to fit linear models to the `mtcars` using the formulas stored in this list:
+
+```{r eval=FALSE}
+formulas <- list(
+  mpg ~ disp,
+  mpg ~ I(1 / disp),
+  mpg ~ disp + wt,
+  mpg ~ I(1 / disp) + wt
+)
+```
+
+## Answer 2:
+
+```{r}
+formulas <- list(
+  mpg ~ disp,
+  mpg ~ I(1 / disp),
+  mpg ~ disp + wt,
+  mpg ~ I(1 / disp) + wt
+)
+```
+
+```{r}
+lms21 <- list()
+for (i in 1:4) {
+  lms21[[i]] <- lm(formulas[[i]], mtcars)
+}
+lms21
+```
+
+```{r}
+lms22 <- lapply(formulas, lm, data=mtcars)
+lms22
+```
+
+
+
+## Question 3:
+
+Fit the model `mpg ~ disp` to each of the bootstrap replicates of `mtcars` in the list below by using a for loop and `lapply()`.
+Can you do it without an anonymous function?
+
+```{r eval=FALSE}
+bootstraps <- lapply(1:10, function(i) {
+  rows <- sample(1:nrow(mtcars), rep = TRUE)
+  mtcars[rows, ]
+})
+```
+
+## Answer 3:
+
+```{r}
+set.seed(20241114)
+bootstraps <- lapply(1:10, function(i) {
+  rows <- sample(1:nrow(mtcars), rep = TRUE)
+  mtcars[rows, ]
+})
+```
+
+```{r}
+lms31 <- list()
+for (i in 1:10) {
+  lms31[[i]] <- lm(mpg ~ disp, bootstraps[[i]])
+}
+lms31
+```
+
+```{r}
+lms32 <- lapply(bootstraps, lm, formula=mpg ~ disp)
+lms32
+```
+
+如果不使用匿名函数，代码如下
+```{r}
+set.seed(20241116)
+lms33 <- list()
+for (i in 1:10) {
+  rows <- sample(1:nrow(mtcars), rep=TRUE)
+  lms33[[i]] <- lm(formula=mpg~disp ,data=mtcars[rows,])
+}
+lms33
+```
+
+
+## Question 4:
+
+For each model in the previous two exercises, extract $R^2$ using the function below.
+
+```{r eval=FALSE}
+rsq <- function(mod) summary(mod)$r.squared
+```
+
+## Answer 4: 
+
+```{r}
+rsq <- function(mod) summary(mod)$r.squared
+```
+
+```{r}
+rs2 <- lapply(lms22, rsq) # Question2的模型
+rs3 <- lapply(lms32, rsq) # Question3的模型
+as.numeric(rs2) 
+as.numeric(rs3)
+```
+
+
+
+## Question 5:
+
+The following code simulates the performance of a t-test for non-normal data. Use `sapply()` and an anonymous function to extract the p-value from every trial.
+
+```{r eval=FALSE}
+trials <- replicate(
+  100,
+  t.test(rpois(10, 10), rpois(7, 10)), 
+  simplify = FALSE
+)
+```
+
+Extra challenge: get rid of the anonymous function by using
+`[[` directly.
+
+
+## Answer 5:
+
+```{r}
+set.seed(20241116)
+trials <- replicate(
+  100,
+  t.test(rpois(10, 10), rpois(7, 10)), 
+  simplify=FALSE
+)
+
+sapply(trials, function(trial) trial$p.value)
+```
+
+如果不使用匿名函数而是使用[[，代码如下
+```{r}
+sapply(trials, '[[', "p.value")
+```
+
+
+
+## Question 6:
+
+Implement a combination of `Map()` and `vapply()` to create an `lapply()` variant that iterates in parallel over all of its inputs and stores its outputs in a vector (or a matrix). What arguments should the function take?
+
+
+## Answer 6:
+
+```{r}
+Newlappy <- function(fun, ..., FUN.VALUE) {
+  tmp <- Map(fun, ...)
+  result <- vapply(tmp, FUN=identity, FUN.VALUE=FUN.VALUE)
+  return(result)
+}
+```
+
+通过一个例子来检验
+```{r}
+a <- list(c(1, 2, 3, 4, 5), c(1, 1, 1))
+b <- list(c(5, 4, 3, 2, 1), c(2, 2, 2))
+Newlappy(function(x,y) mean(x+y), a, b, FUN.VALUE=numeric(1))
+```
+
+
+
+
+## Question 7:
+
+Make a faster version of `chisq.test()` that only computes the chi-square test statistic when the input is two numeric vectors with no missing values. You can try simplifying `chisq.test()`
+or by coding from the mathematical definition.
+
+
+## Answer 7:
+
+```{r}
+NewChisqTest <- function(x, y) {
+  data <- table(x, y)  
+  N <- length(x)
+  row_nums <- rowSums(data)  
+  col_nums <- colSums(data)  
+  
+  Es <- matrix(0, nrow = nrow(data), ncol = ncol(data))  
+  for (i in 1:nrow(data)) {  
+    for (j in 1:ncol(data)) {  
+      Es[i, j] <- (row_nums[i] * col_nums[j]) / N  
+    }  
+  }  
+  
+  data <- as.numeric(data)
+  Es <- as.numeric(Es)
+  result <- sum((data - Es)^2 / Es)  
+
+  return(result)  
+}
+```
+
+用一个实验来验证此函数的正确性和快速性
+```{r}
+set.seed(20241116)
+x <- sample(1:5, 50, replace=TRUE)
+y <- sample(1:2, 50, replace=TRUE)
+
+test1 <- as.numeric(chisq.test(table(x, y))$statistic)
+test2 <- NewChisqTest(x, y)
+
+time1 <- replicate(
+  1000,
+  expr= {
+    start1 <- Sys.time()
+    test1 <- as.numeric(chisq.test(table(x, y))$statistic)
+    end1 <- Sys.time()
+    end1 - start1
+  })
+
+time2 <- replicate(
+  1000,
+  expr= {
+    start2 <- Sys.time()
+    test2 <- NewChisqTest(x, y)
+    end2 <- Sys.time()
+    end2 - start2
+  })
+
+data.frame(fun=c("chisq.test", "New"), value=c(test1, test2), time=c(mean(time1), mean(time2)))
+```
+
+可见新函数的计算结果是准确的，并且运行时间更短.
+
+
+
+
+## Question 8:
+
+Can you make a faster version of `table()` for the case of an input of two integer vectors with no missing values? Can you use it to speed up your chi-square test?
+
+## Answer 8:
+
+```{r}
+NewTable <- function(x, y) {
+  x.new <- unique(x)
+  y.new <- unique(y)
+  result <- matrix(0, nrow=length(x.new), ncol=length(y.new))
+  rownames(result) <- x.new
+  colnames(result) <- y.new
+  
+  for (i in 1:length(x)) {
+    row_index <- match(x[i], x.new)
+    col_index <- match(y[i], y.new)
+    result[row_index, col_index] <- result[row_index, col_index]+1
+  }
+  
+  return(result)
+}
+```
+
+下面用一个实验来检验此函数
+```{r}
+set.seed(20241116)
+x <- sample(1:5, 50, replace=TRUE)
+y <- sample(1:2, 50, replace=TRUE)
+
+result1 <- table(x, y)
+result2 <- NewTable(x, y)
+
+time1 <- replicate(
+  1000,
+  expr= {
+    start1 <- Sys.time()
+    test1 <- table(x, y)
+    end1 <- Sys.time()
+    end1 - start1
+  })
+
+time2 <- replicate(
+  1000,
+  expr= {
+    start2 <- Sys.time()
+    test2 <- NewTable(x, y)
+    end2 <- Sys.time()
+    end2 - start2
+  })
+```
+
+```{r}
+result1
+mean(time1)
+```
+
+```{r}
+result2
+mean(time2)
+```
+
+可见新函数结果准确并且速度更快.
+
+如果将此函数使用到我的卡方检验函数中，可得如下函数
+```{r}
+NewNewChisqTest <- function(x, y) {
+  data <- NewTable(x, y)  
+  N <- length(x)
+  row_nums <- rowSums(data)  
+  col_nums <- colSums(data)  
+  
+  Es <- matrix(0, nrow = nrow(data), ncol = ncol(data))  
+  for (i in 1:nrow(data)) {  
+    for (j in 1:ncol(data)) {  
+      Es[i, j] <- (row_nums[i] * col_nums[j]) / N  
+    }  
+  }  
+  
+  data <- as.numeric(data)
+  Es <- as.numeric(Es)
+  result <- sum((data - Es)^2 / Es)  
+
+  return(result)  
+}
+```
+
+```{r} 
+set.seed(20241116)
+x <- sample(1:5, 50, replace=TRUE)
+y <- sample(1:2, 50, replace=TRUE)
+
+test1 <- as.numeric(chisq.test(table(x, y))$statistic)
+test2 <- NewChisqTest(x, y)
+test3 <- NewNewChisqTest(x, y)
+
+
+time1 <- replicate(
+  1000,
+  expr= {
+    start1 <- Sys.time()
+    test1 <- as.numeric(chisq.test(table(x, y))$statistic)
+    end1 <- Sys.time()
+    end1 - start1
+  })
+
+time2 <- replicate(
+  1000,
+  expr= {
+    start2 <- Sys.time()
+    test2 <- NewChisqTest(x, y)
+    end2 <- Sys.time()
+    end2 - start2
+  })
+
+time3 <- replicate(
+  1000,
+  expr= {
+    start3 <- Sys.time()
+    test3 <- NewNewChisqTest(x, y)
+    end3 <- Sys.time()
+    end3 - start3
+  })
+
+data.frame(fun=c("chisq.test", "New", "NewNew"), value=c(test1, test2, test3), time=c(mean(time1), mean(time2), mean(time3)))
+```
+
+可见结果准确，并且速度更快. 
+
+
+
+
+
+
+# HW9
+
+
+
+## Question
+
+Consider the bivariate density
+
+$$
+f(x, y) \propto\binom{n}{x}y^{x+a−1}(1 − y)^{n−x+b−1},\quad x = 0, 1, \dots , n,\  0 ≤ y ≤ 1.
+$$
+It can be shown that for fixed $a, b, n$, the conditional distributions are $\mathrm{Binomial}(n, y)$ and $\mathrm{Beta}(x + a, n − x + b)$. Write an Rcpp function using the Gibbs sampler to
+generate a chain with target joint density $f(x, y)$.
+
+Compare the corresponding generated random numbers with
+those by the R function you wrote using the function “qqplot”.
+
+Campare the computation time of the two functions with the
+function “microbenchmark”.
+
+Comments your results.
+
+## Answer
+
+```{r}
+GibbsR <- function(N, a, b, n) {
+  # N: 生成样本数
+  # a, b, n: 目标分布的参数
+  # return: Nx2的矩阵
+  
+  z <- matrix(nrow=N, ncol=2)
+  z[1, ] <- c(0, 0)
+  x <- 0
+  y <- 0.2
+  for (i in 2:N) {
+    x <- rbinom(1, n, y)
+    y <- rbeta(1, x+a, n-x+b)
+    z[i, ] <- c(x, y)
+  }
+  return(z)
+}  
+```
+
+```{r}
+set.seed(20241123)
+N <- 1000
+burn <- 500
+a <- 1
+b <- 1
+n <- 10
+result1 <- GibbsR(N, a, b, n)
+result2 <- GibbsC(N, a, b, n)
+```
+
+```{r}
+qqplot(result1[(burn+1):N,1], result2[(burn+1):N,1], xlab="GibbsR", ylab="GibbsC")
+abline(0, 1, col="red")
+qqplot(result1[(burn+1):N,2], result2[(burn+1):N,2], xlab="GibbsR", ylab="GibbsC")
+abline(0, 1, col="red")
+```
+
+从Q-Q图来看两个函数生成随机数的分布是相近的. 
+
+```{r}
+ts <- microbenchmark(gibbR=GibbsR(N, a, b, n),
+                     gibbC=GibbsC(N, a, b, n))
+summary(ts)[, c(1, 3, 5, 6)]
+```
+
+可见GibbsC的速度远远快于GibbsR.
+
+使用C++确实能极大地提高R程序的效率.
+
+
+
+
+
+
