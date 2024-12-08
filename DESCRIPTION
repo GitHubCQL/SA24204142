@@ -1,0 +1,17 @@
+Package: SA24204142
+Type: Package
+Title: Final project of 'Statistical Computing' course
+Version: 1.3
+Date: 2024-12-08
+Author: SA24204142
+Maintainer: SA24204142 <radian_cql@mail.ustc.edu.cn>
+Description: Several R and Rcpp functions about MCMC are included.
+License: GPL (>= 2)
+Imports: Rcpp (>= 1.0.13), DAAG, MASS, boot, bootstrap, ggplot2, lpSolve, microbenchmark, patchwork, RColorBrewer
+Suggests: knitr, rmarkdown
+VignetteBuilder: knitr
+LinkingTo: Rcpp
+RoxygenNote: 7.3.2
+Encoding: UTF-8
+URL: http://github.com/GitHubCQL/SA24204142
+BugReports: http://github.com/GitHubCQL/SA24204142/issues
